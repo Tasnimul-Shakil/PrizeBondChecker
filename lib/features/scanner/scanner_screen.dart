@@ -38,6 +38,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   bool _isCameraInitialized = false;
   bool _isProcessingFrame = false;
   bool _isAnalyzingImage = false;
+  bool _isPickingImage = false;
   String? _cameraErrorMessage;
 
   ScanMode _currentMode = ScanMode.single;
@@ -76,13 +77,20 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+    // If the user is currently picking a photo from the gallery, don't interfere with camera
+    if (_isPickingImage) return;
+
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) {
       return;
     }
-    if (state == AppLifecycleState.inactive) {
-      _cameraController?.dispose();
+
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _stopImageStream();
     } else if (state == AppLifecycleState.resumed) {
-      _initializeCamera();
+      if (!_isAnalyzingImage && !controller.value.isStreamingImages) {
+        _startImageStream();
+      }
     }
   }
 
@@ -121,12 +129,25 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
   }
 
+  Future<void> _stopImageStream() async {
+    try {
+      final controller = _cameraController;
+      if (controller != null &&
+          controller.value.isInitialized &&
+          controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+    } catch (_) {}
+  }
+
   void _startImageStream() {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (controller.value.isStreamingImages) return;
 
     try {
-      _cameraController!.startImageStream((CameraImage image) {
-        if (_isProcessingFrame || _isAnalyzingImage) return;
+      controller.startImageStream((CameraImage image) {
+        if (_isProcessingFrame || _isAnalyzingImage || _isPickingImage) return;
 
         // Throttle processing: allow 2 to 3 frames per second to save battery
         final now = DateTime.now();
@@ -300,7 +321,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   /// Takes a high-resolution focused photo and runs OCR via InputImage.fromFilePath
   Future<void> _captureAndScanPhoto() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
-    if (_isAnalyzingImage) return;
+    if (_isAnalyzingImage || _isPickingImage) return;
 
     try {
       setState(() {
@@ -308,9 +329,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       });
 
       HapticFeedback.mediumImpact();
-      try {
-        await _cameraController!.stopImageStream();
-      } catch (_) {}
+      await _stopImageStream();
 
       final photo = await _cameraController!.takePicture();
       final inputImage = InputImage.fromFilePath(photo.path);
@@ -335,22 +354,35 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
   /// Lets the user pick an existing prize bond photo from Gallery / Storage
   Future<void> _pickImageFromGallery() async {
+    if (_isPickingImage) return;
+
+    setState(() {
+      _isPickingImage = true;
+      _isAnalyzingImage = true;
+    });
+
+    // 1. Stop camera image stream first so camera hardware is idle while gallery is open
+    await _stopImageStream();
+
     try {
       final picked = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 2560,
-        maxHeight: 2560,
-        imageQuality: 95,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
       );
-      if (picked == null) return;
 
-      setState(() {
-        _isAnalyzingImage = true;
-      });
-
-      try {
-        _cameraController?.stopImageStream();
-      } catch (_) {}
+      if (picked == null) {
+        // User cancelled gallery selection without picking an image
+        if (mounted) {
+          setState(() {
+            _isPickingImage = false;
+            _isAnalyzingImage = false;
+          });
+          _startImageStream();
+        }
+        return;
+      }
 
       final inputImage = InputImage.fromFilePath(picked.path);
       await _runOcrPipeline(inputImage, isLiveStream: false);
@@ -366,6 +398,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     } finally {
       if (mounted) {
         setState(() {
+          _isPickingImage = false;
           _isAnalyzingImage = false;
         });
       }
@@ -436,6 +469,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   }
 
   void _showSinglePreviewModal({required String serial, String? series}) async {
+    await _stopImageStream();
+
     final result = await showModalBottomSheet<Bond>(
       context: context,
       isScrollControlled: true,
