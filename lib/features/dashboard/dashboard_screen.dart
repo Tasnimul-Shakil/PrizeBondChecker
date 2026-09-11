@@ -51,7 +51,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => ManualAddModal(walletService: widget.walletService),
+      builder: (ctx) => ManualAddModal(
+        walletService: widget.walletService,
+        onOpenScanner: widget.onOpenScanner,
+      ),
     );
 
     if (res != null) {

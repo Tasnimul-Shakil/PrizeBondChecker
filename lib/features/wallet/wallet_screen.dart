@@ -339,7 +339,10 @@ class _WalletScreenState extends State<WalletScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => ManualAddModal(walletService: widget.walletService),
+      builder: (ctx) => ManualAddModal(
+        walletService: widget.walletService,
+        onOpenScanner: widget.onOpenScanner,
+      ),
     );
 
     if (result != null) {

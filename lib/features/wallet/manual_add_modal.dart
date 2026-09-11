@@ -7,8 +7,13 @@ import '../../services/wallet_service.dart';
 
 class ManualAddModal extends StatefulWidget {
   final WalletService walletService;
+  final VoidCallback? onOpenScanner;
 
-  const ManualAddModal({super.key, required this.walletService});
+  const ManualAddModal({
+    super.key,
+    required this.walletService,
+    this.onOpenScanner,
+  });
 
   @override
   State<ManualAddModal> createState() => _ManualAddModalState();
@@ -139,6 +144,37 @@ class _ManualAddModalState extends State<ManualAddModal> {
                         ),
                       ),
                     ),
+                    if (widget.onOpenScanner != null)
+                      InkWell(
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          widget.onOpenScanner?.call();
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF006A4E).withOpacity(0.35),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF00FF66).withOpacity(0.6)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.camera_alt, color: Color(0xFF00FF66), size: 16),
+                              const SizedBox(width: 6),
+                              Text(
+                                _locale.isBangla ? 'স্ক্যান' : 'Scan',
+                                style: const TextStyle(
+                                  color: Color(0xFF00FF66),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -173,6 +209,16 @@ class _ManualAddModalState extends State<ManualAddModal> {
                       borderSide: const BorderSide(color: Color(0xFF006A4E), width: 2),
                     ),
                     prefixIcon: const Icon(Icons.confirmation_number, color: Color(0xFFD4AF37)),
+                    suffixIcon: widget.onOpenScanner != null
+                        ? IconButton(
+                            icon: const Icon(Icons.camera_alt, color: Color(0xFF00FF66), size: 24),
+                            tooltip: _locale.isBangla ? 'ক্যামেরা দিয়ে স্ক্যান' : 'Scan with Camera',
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              widget.onOpenScanner?.call();
+                            },
+                          )
+                        : null,
                   ),
                 ),
                 if (_errorMessage != null) ...[
