@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Prize Bond Scanner & Result Checker - Live Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Hind+Siliguri:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="simulator-wrapper">
+    <div class="device-frame">
+      <!-- Dynamic Island / Speaker notch -->
+      <div class="device-notch">
+        <div class="camera-lens"></div>
+        <div class="speaker-grill"></div>
+      </div>
+
+      <!-- Mobile Screen Container -->
+      <div class="screen-viewport">
+        <!-- Status Bar -->
+        <div class="status-bar">
+          <span class="status-time" id="status-clock">09:41</span>
+          <div class="status-icons">
+            <svg width="15" height="11" viewBox="0 0 15 11" fill="currentColor"><path d="M0 8.5h2.5V11H0V8.5zm3.75-2.5h2.5V11h-2.5V6zm3.75-2.5h2.5V11H7.5V3.5zm3.75-3.5h2.5V11h-2.5V0z"/></svg>
+            <svg width="15" height="11" viewBox="0 0 16 12" fill="currentColor"><path d="M8 9.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm-3.5-3a5 5 0 017 0l-1 1a3.5 3.5 0 00-5 0l-1-1zm-3-3a9 9 0 0113 0l-1 1a7.5 7.5 0 00-11 0l-1-1z"/></svg>
+            <div class="battery-pill"><div class="battery-level"></div></div>
+          </div>
+        </div>
+
+        <!-- APP CONTENT AREA -->
+        <div class="app-body">
+          <!-- TAB 0: DASHBOARD -->
+          <div class="tab-pane active" id="tab-dashboard">
+            <header class="app-header">
+              <div class="header-brand">
+                <div class="brand-badge">★</div>
+                <div class="brand-title">Prize Bond Scanner</div>
+              </div>
+              <button class="icon-btn" id="btn-refresh" title="Re-check results">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67"/></svg>
+              </button>
+            </header>
+
+            <div class="scroll-content">
+              <!-- Hero Card -->
+              <div class="hero-card">
+                <div class="hero-top">
+                  <span class="hero-subtitle">Total Prize Money Won</span>
+                  <span class="hero-pill" id="hero-bonds-count">0 Bonds</span>
+                </div>
+                <div class="hero-amount" id="hero-won-amount">৳ 0</div>
+                <div class="hero-net" id="hero-net-amount">Net: ৳ 0 (after 20% NBR tax)</div>
+                <div class="hero-divider"></div>
+                <div class="hero-bottom">
+                  <div>
+                    <div class="stat-label">Total Value</div>
+                    <div class="stat-val" id="hero-portfolio-val">৳ 0</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div class="stat-label">Winning Bonds</div>
+                    <div class="stat-val winner-count-badge" id="hero-win-fraction">0 / 0</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Winner Celebration Banner -->
+              <div class="winner-alert-card hidden" id="dashboard-winner-card">
+                <div class="trophy-icon">🏆</div>
+                <div class="winner-alert-text">
+                  <div class="alert-title">CONGRATULATIONS!</div>
+                  <div class="alert-sub" id="winner-alert-msg">You have winning bonds!</div>
+                </div>
+                <button class="btn-small-gold" id="btn-view-winners">View</button>
+              </div>
+
+              <!-- Quick Actions -->
+              <div class="section-title">Quick Actions</div>
+              <div class="quick-actions-row">
+                <button class="action-tile green" id="action-scan-bond">
+                  <div class="tile-icon">📷</div>
+                  <div class="tile-title">Scan Bond</div>
+                  <div class="tile-sub">Camera OCR</div>
+                </button>
+                <button class="action-tile blue" id="action-add-range">
+                  <div class="tile-icon">🔢</div>
+                  <div class="tile-title">Add Range</div>
+                  <div class="tile-sub">Sequential</div>
+                </button>
+                <button class="action-tile gold" id="action-view-draws">
+                  <div class="tile-icon">📜</div>
+                  <div class="tile-title">Draw Results</div>
+                  <div class="tile-sub">8 Quarters</div>
+                </button>
+              </div>
+
+              <!-- Latest Official Draw Announcement -->
+              <div class="draw-announcement" id="latest-draw-banner">
+                <div class="announcement-icon">📢</div>
+                <div class="announcement-body">
+                  <div class="announcement-title" id="announcement-draw-no">Draw #119 Results Active</div>
+                  <div class="announcement-sub">1st Prize ৳6,00,000 • 46 Prizes per series</div>
+                </div>
+                <div class="announcement-arrow">›</div>
+              </div>
+
+              <!-- Recent Bonds -->
+              <div class="section-header-row">
+                <div class="section-title">Recent Bonds</div>
+                <button class="link-btn" id="btn-see-all-bonds">View All</button>
+              </div>
+              <div class="recent-bonds-list" id="recent-bonds-container">
+                <div class="empty-placeholder">No bonds added yet. Tap "Scan Bond" to start.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 1: WALLET -->
+          <div class="tab-pane" id="tab-wallet">
+            <header class="app-header">
+              <div class="header-title">My Prize Bonds</div>
+              <div class="header-actions">
+                <button class="icon-btn gold" id="wallet-btn-add-range" title="Add Range">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <button class="icon-btn green" id="wallet-btn-scan" title="Scan with Camera">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </header>
+
+            <div class="search-bar-wrap">
+              <input type="text" id="wallet-search" class="search-input" placeholder="Search serial, series, or tag...">
+            </div>
+
+            <!-- Filters -->
+            <div class="filter-chips-row" id="wallet-filter-chips">
+              <button class="chip active" data-filter="all">All Bonds</button>
+              <button class="chip" data-filter="winners">🏆 Winners Only</button>
+            </div>
+
+            <!-- List -->
+            <div class="scroll-content list-content" id="wallet-list-container">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- TAB 2: DRAWS ARCHIVE -->
+          <div class="tab-pane" id="tab-draws">
+            <header class="app-header">
+              <div class="header-title">Official Draws Archive</div>
+              <button class="icon-btn green" id="draws-sync-btn" title="Sync Latest Draws">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67"/></svg>
+              </button>
+            </header>
+
+            <!-- Number Quick Search -->
+            <div class="search-bar-wrap search-with-btn">
+              <input type="number" id="draws-quick-search" class="search-input" placeholder="Search any 7-digit number..." maxlength="7">
+              <button class="btn-search-go" id="btn-draw-search">Check</button>
+            </div>
+            <div id="draw-search-feedback" class="search-feedback hidden"></div>
+
+            <!-- Horizontal Draw Selector -->
+            <div class="draw-chips-row" id="draws-selector-row">
+              <!-- Rendered dynamically -->
+            </div>
+
+            <!-- Active Draw Details -->
+            <div class="scroll-content list-content" id="draw-detail-container">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- TAB 3: RULES & CLAIM GUIDE -->
+          <div class="tab-pane" id="tab-guide">
+            <header class="app-header">
+              <div class="header-title">Prize Bond Rules & Guide</div>
+            </header>
+
+            <div class="scroll-content guide-content">
+              <div class="guide-card">
+                <div class="guide-header">
+                  <div class="guide-icon">📅</div>
+                  <div class="guide-title">Draw Schedule</div>
+                </div>
+                <div class="guide-body">
+                  Draws are conducted quarterly by Bangladesh Bank 4 times a year:
+                  <ul>
+                    <li><strong>31st January</strong></li>
+                    <li><strong>30th April</strong></li>
+                    <li><strong>31st July</strong></li>
+                    <li><strong>31st October</strong></li>
+                  </ul>
+                  If any draw date falls on a weekend or public holiday, the draw takes place on the next working day.
+                </div>
+              </div>
+
+              <div class="guide-card">
+                <div class="guide-header">
+                  <div class="guide-icon">⏳</div>
+                  <div class="guide-title">2-Year Validity Window</div>
+                </div>
+                <div class="guide-body">
+                  You can claim prize money up to <strong>2 years</strong> from the date of the draw. After 2 years, any unclaimed prize is forfeited to the Government treasury.
+                </div>
+              </div>
+
+              <div class="guide-card">
+                <div class="guide-header">
+                  <div class="guide-icon">🎯</div>
+                  <div class="guide-title">Series-Agnostic Matching</div>
+                </div>
+                <div class="guide-body">
+                  Bangladesh Bank draws are series-agnostic. Every existing series (e.g. কখ, গঘ, KA, etc.) having the drawn 7-digit serial number wins the designated prize!
+                </div>
+              </div>
+
+              <div class="guide-card">
+                <div class="guide-header">
+                  <div class="guide-icon">🏆</div>
+                  <div class="guide-title">Prize Structure (Per Series)</div>
+                </div>
+                <div class="guide-body">
+                  <ul>
+                    <li><strong>1st Prize:</strong> ৳6,00,000 (1 winner)</li>
+                    <li><strong>2nd Prize:</strong> ৳3,25,000 (1 winner)</li>
+                    <li><strong>3rd Prize:</strong> ৳1,00,000 (2 winners)</li>
+                    <li><strong>4th Prize:</strong> ৳50,000 (2 winners)</li>
+                    <li><strong>5th Prize:</strong> ৳10,000 (40 winners)</li>
+                  </ul>
+                  Total: 46 prize numbers per draw.
+                </div>
+              </div>
+
+              <div class="guide-card">
+                <div class="guide-header">
+                  <div class="guide-icon">🧾</div>
+                  <div class="guide-title">Taxation & Claim Procedure</div>
+                </div>
+                <div class="guide-body">
+                  Under NBR regulations, <strong>20% source tax</strong> is deducted from prize earnings. Submit claims at any Bangladesh Bank branch, National Savings Bureau, or scheduled bank with original bond, NID, and bank details.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CAMERA SCANNER OVERLAY SCREEN -->
+        <div class="scanner-overlay hidden" id="scanner-screen">
+          <div class="scanner-top-bar">
+            <button class="scanner-icon-btn" id="scanner-btn-close">✕</button>
+            <div class="scanner-mode-switch">
+              <button class="mode-btn active" id="mode-single">Single</button>
+              <button class="mode-btn" id="mode-batch">Batch</button>
+            </div>
+            <button class="scanner-icon-btn" id="scanner-btn-torch">⚡</button>
+          </div>
+
+          <!-- Video Viewfinder -->
+          <div class="viewfinder-container">
+            <video id="camera-video" autoplay playsinline muted></video>
+            <canvas id="camera-canvas" class="hidden"></canvas>
+
+            <!-- Golden Bounding Box -->
+            <div class="bounding-box-wrapper">
+              <div class="instruction-bubble">Align 7-Digit Serial & Series Here</div>
+              <div class="bounding-box">
+                <div class="corner-corner tl"></div>
+                <div class="corner-corner tr"></div>
+                <div class="corner-corner bl"></div>
+                <div class="corner-corner br"></div>
+                <div class="scan-laser"></div>
+                <div class="detected-serial-label" id="scanner-detected-label">Scanning physical bond...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Test / Simulation Bar for instant testing without camera -->
+          <div class="scanner-sim-bar">
+            <span style="font-size: 11px; color: #aaa;">Demo / Test Buttons:</span>
+            <button class="btn-demo-tag gold" id="sim-btn-1st">🎯 Winner (0782341)</button>
+            <button class="btn-demo-tag" id="sim-btn-2nd">🥈 2nd (0421890)</button>
+            <button class="btn-demo-tag" id="sim-btn-reg">Bond (0154289)</button>
+          </div>
+
+          <!-- Batch Tray -->
+          <div class="batch-tray hidden" id="batch-tray-bar">
+            <div class="tray-summary">
+              <div class="tray-icon">📚</div>
+              <div>
+                <div class="tray-title" id="batch-counter-text">Batch Mode: 0 Bonds</div>
+                <div class="tray-subtitle" id="batch-invest-text">Scan bonds sequentially</div>
+              </div>
+            </div>
+            <div class="batch-chips-scroll" id="batch-chips-container"></div>
+            <button class="btn-save-batch" id="btn-save-batch" disabled>Save 0 Bonds to Wallet</button>
+          </div>
+        </div>
+
+        <!-- MODAL: SINGLE SCAN VERIFY / EDIT -->
+        <div class="modal-overlay hidden" id="preview-modal">
+          <div class="modal-card">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+              <div class="modal-title">Verify Scanned Bond</div>
+              <button class="modal-close-btn" id="preview-modal-close">✕</button>
+            </div>
+
+            <!-- Winner Alert Banner inside Modal -->
+            <div class="modal-winner-badge hidden" id="preview-winner-badge">
+              <div class="badge-trophy">🎉</div>
+              <div class="badge-text">
+                <div class="badge-title">WINNING BOND DETECTED!</div>
+                <div class="badge-detail" id="preview-winner-desc">1st Prize - ৳ 6,00,000</div>
+              </div>
+            </div>
+
+            <div class="modal-inputs-row">
+              <div class="input-col-small">
+                <label class="modal-label">Series</label>
+                <input type="text" id="modal-input-series" class="modal-input" placeholder="কখ">
+              </div>
+              <div class="input-col-large">
+                <label class="modal-label">7-Digit Serial</label>
+                <input type="number" id="modal-input-serial" class="modal-input serial-bold" placeholder="0123456" maxlength="7">
+              </div>
+            </div>
+
+            <div class="bengali-preview-pill">
+              <span>Bengali Digits:</span>
+              <strong id="modal-bengali-preview">০১২৩৪৫৬</strong>
+            </div>
+
+            <div class="modal-input-group">
+              <label class="modal-label">Tag / Category (Optional)</label>
+              <input type="text" id="modal-input-tag" class="modal-input" placeholder="e.g. Gift, Family, Bank">
+            </div>
+
+            <button class="btn-modal-confirm" id="btn-confirm-save">Confirm & Save to Wallet</button>
+          </div>
+        </div>
+
+        <!-- MODAL: SEQUENTIAL RANGE INPUT -->
+        <div class="modal-overlay hidden" id="range-modal">
+          <div class="modal-card">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+              <div class="modal-title">Add Sequential Range</div>
+              <button class="modal-close-btn" id="range-modal-close">✕</button>
+            </div>
+
+            <div class="modal-input-group">
+              <label class="modal-label">Series Prefix (Optional)</label>
+              <input type="text" id="range-input-series" class="modal-input" placeholder="e.g. কখ or KA">
+            </div>
+
+            <div class="modal-inputs-row">
+              <div class="input-col-half">
+                <label class="modal-label">Start Serial</label>
+                <input type="number" id="range-input-start" class="modal-input serial-bold" placeholder="0154201" maxlength="7">
+              </div>
+              <div class="input-col-half">
+                <label class="modal-label">End Serial</label>
+                <input type="number" id="range-input-end" class="modal-input serial-bold" placeholder="0154250" maxlength="7">
+              </div>
+            </div>
+
+            <div class="modal-input-group">
+              <label class="modal-label">Batch Tag (Optional)</label>
+              <input type="text" id="range-input-tag" class="modal-input" placeholder="e.g. Sonali Bank Purchase">
+            </div>
+
+            <div class="range-calc-banner" id="range-calc-preview">
+              Enter start and end 7-digit numbers
+            </div>
+
+            <button class="btn-modal-confirm" id="btn-confirm-range" disabled>Add Bonds to Wallet</button>
+          </div>
+        </div>
+
+        <!-- MODAL: BOND DETAILS -->
+        <div class="modal-overlay hidden" id="detail-modal">
+          <div class="modal-card">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+              <div>
+                <div class="modal-title" id="detail-bond-name">কখ 0123456</div>
+                <div class="detail-bn-serial" id="detail-bond-bn">বাংলা: কখ ০১২৩৪৫৬</div>
+              </div>
+              <button class="btn-delete-bond" id="btn-delete-bond" title="Delete Bond">🗑️</button>
+            </div>
+
+            <div id="detail-prize-section"></div>
+
+            <div class="modal-actions-foot">
+              <button class="btn-modal-confirm" id="detail-modal-close">Close</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTTOM NAVIGATION BAR -->
+        <nav class="bottom-nav">
+          <button class="nav-item active" data-tab="tab-dashboard">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <span>Home</span>
+          </button>
+          <button class="nav-item" data-tab="tab-wallet">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+            <span>Wallet</span>
+          </button>
+          <div class="nav-fab-space"></div>
+          <button class="nav-item" data-tab="tab-draws">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0011 15.9V19H7v2h10v-2h-4v-3.1a5.01 5.01 0 003.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/></svg>
+            <span>Draws</span>
+          </button>
+          <button class="nav-item" data-tab="tab-guide">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+            <span>Guide</span>
+          </button>
+
+          <!-- Floating Center Button -->
+          <button class="nav-fab" id="fab-scan-camera" title="Scan Bond Camera">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFF176" stroke-width="2.5"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M1 12h2M21 12h2"/></svg>
+          </button>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
