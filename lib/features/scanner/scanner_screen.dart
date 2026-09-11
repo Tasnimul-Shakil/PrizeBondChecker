@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/digit_normalizer.dart';
 import '../../core/matching_engine.dart';
 import '../../models/bond.dart';
+import '../../services/locale_service.dart';
 import '../../services/wallet_service.dart';
 import 'batch_scanner_tray.dart';
 import 'preview_edit_modal.dart';
@@ -45,6 +46,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   late final TextRecognizer _devanagariRecognizer;
   late final TextRecognizer _latinRecognizer;
   final ImagePicker _imagePicker = ImagePicker();
+  final LocaleService _locale = LocaleService();
 
   // Batch Mode state
   final List<Bond> _batchCapturedBonds = [];
@@ -840,8 +842,12 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     Center(
                       child: Text(
                         _lastDetectedSerial != null
-                            ? 'Detected: $_lastDetectedSerial'
-                            : 'Align Serial Number & Series Here\n(e.g. খ শ ০১২৮৭৪৪)',
+                            ? (_locale.isBangla
+                                ? 'শনাক্ত হয়েছে: ${DigitNormalizer.toBengaliDigits(_lastDetectedSerial!)}'
+                                : 'Detected: $_lastDetectedSerial')
+                            : (_locale.isBangla
+                                ? 'এখানে বন্ডের ৭ ডিজিট নম্বরটি রাখুন\n(যেমন: ০১২৮৭৪৪)'
+                                : 'Align Serial Number Here\n(e.g. 0128744)'),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: _lastDetectedSerial != null
@@ -930,12 +936,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               ),
               child: Row(
                 children: [
-                  _modeButton(title: 'Single', mode: ScanMode.single),
-                  _modeButton(title: 'Batch', mode: ScanMode.batch),
+                  _modeButton(title: _locale.isBangla ? 'একক' : 'Single', mode: ScanMode.single),
+                  _modeButton(title: _locale.isBangla ? 'একাধিক' : 'Batch', mode: ScanMode.batch),
                 ],
               ),
             ),
             const Spacer(),
+            const LanguageToggleButton(),
             IconButton(
               icon: Icon(
                 _isTorchOn ? Icons.flash_on : Icons.flash_off,
@@ -1004,7 +1011,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             // 1. Upload from Gallery
             _bottomActionIcon(
               icon: Icons.photo_library,
-              label: 'Upload Image',
+              label: _locale.isBangla ? 'ছবি বাছাই' : 'Gallery',
               onTap: _pickImageFromGallery,
             ),
 
@@ -1035,7 +1042,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             // 3. Manual Entry
             _bottomActionIcon(
               icon: Icons.keyboard,
-              label: 'Type Serial',
+              label: _locale.isBangla ? 'নম্বর লিখুন' : 'Type Serial',
               onTap: _openManualEntry,
             ),
           ],

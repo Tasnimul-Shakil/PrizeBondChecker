@@ -4,8 +4,9 @@ import '../../core/digit_normalizer.dart';
 import '../../core/matching_engine.dart';
 import '../../models/bond.dart';
 import '../../models/draw.dart';
+import '../../services/locale_service.dart';
 import '../../services/wallet_service.dart';
-import 'range_input_modal.dart';
+import 'manual_add_modal.dart';
 
 enum BondFilter { all, winningOnly }
 
@@ -29,6 +30,7 @@ class _WalletScreenState extends State<WalletScreen> {
   final TextEditingController _searchController = TextEditingController();
   BondFilter _activeFilter = BondFilter.all;
   String? _selectedSeriesFilter;
+  final LocaleService _locale = LocaleService();
 
   @override
   void initState() {
@@ -47,7 +49,6 @@ class _WalletScreenState extends State<WalletScreen> {
     final allBonds = widget.walletService.bonds;
 
     return allBonds.where((bond) {
-      // 1. Search Query
       if (query.isNotEmpty) {
         final matchesSerial = bond.serialNumber.contains(query);
         final matchesSeries = bond.seriesPrefix?.toLowerCase().contains(query) ?? false;
@@ -55,12 +56,10 @@ class _WalletScreenState extends State<WalletScreen> {
         if (!matchesSerial && !matchesSeries && !matchesTags) return false;
       }
 
-      // 2. Series Filter
       if (_selectedSeriesFilter != null) {
         if (bond.seriesPrefix != _selectedSeriesFilter) return false;
       }
 
-      // 3. Winning Filter
       if (_activeFilter == BondFilter.winningOnly) {
         final matches = widget.matchingEngine.checkBond(bond);
         if (matches.isEmpty) return false;
@@ -158,14 +157,14 @@ class _WalletScreenState extends State<WalletScreen> {
                                 color: Colors.black87,
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.zoom_in, color: Color(0xFFFFF176), size: 14),
-                                  SizedBox(width: 4),
+                                  const Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                                  const SizedBox(width: 4),
                                   Text(
-                                    'Tap to Enlarge Photo',
-                                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                    _locale.t('tap_to_view_photo'),
+                                    style: const TextStyle(color: Colors.white, fontSize: 11),
                                   ),
                                 ],
                               ),
@@ -179,35 +178,54 @@ class _WalletScreenState extends State<WalletScreen> {
               ],
               Row(
                 children: [
-                  Text(
-                    bond.displayName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _locale.isBangla
+                              ? DigitNormalizer.toBengaliDigits(bond.displayName)
+                              : bond.displayName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                        if (hasImage)
+                          Row(
+                            children: [
+                              const Icon(Icons.photo, color: Color(0xFF00FF66), size: 13),
+                              const SizedBox(width: 4),
+                              Text(
+                                _locale.t('attached_photo'),
+                                style: const TextStyle(color: Color(0xFF00FF66), fontSize: 11),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                   ),
-                  const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    icon: const Icon(Icons.delete_outline, color: Color(0xFFFF5252)),
+                    tooltip: _locale.t('delete'),
                     onPressed: () async {
                       Navigator.pop(ctx);
-                      await widget.walletService.deleteBond(bond.id);
-                      setState(() {});
+                      final confirm = await _showDeleteConfirmDialog(bond);
+                      if (confirm == true) {
+                        await widget.walletService.deleteBond(bond.id);
+                        setState(() {});
+                      }
                     },
                   ),
                 ],
               ),
-              Text(
-                'Bengali: ${DigitNormalizer.toBengaliDigits(bond.displayName)}',
-                style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 14),
-              ),
               const SizedBox(height: 16),
               if (matches.isNotEmpty) ...[
-                const Text(
-                  'Winning Draw Details:',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                Text(
+                  _locale.t('winning_draw_info'),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 ...matches.map((m) {
@@ -225,7 +243,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         Row(
                           children: [
                             Text(
-                              '${m.tierName} (${m.tierNameBn})',
+                              _locale.isBangla ? m.tierNameBn : m.tierName,
                               style: const TextStyle(
                                 color: Color(0xFF00FF66),
                                 fontWeight: FontWeight.bold,
@@ -233,7 +251,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                             const Spacer(),
                             Text(
-                              DigitNormalizer.formatCurrencyBDT(m.prizeAmount),
+                              _locale.formatCurrency(m.prizeAmount),
                               style: const TextStyle(
                                 color: Color(0xFFFFF176),
                                 fontWeight: FontWeight.bold,
@@ -244,11 +262,11 @@ class _WalletScreenState extends State<WalletScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Draw #${m.drawNumber} • ${m.drawDate.toIso8601String().substring(0, 10)}',
+                          '${_locale.t("draw_no")}${_locale.formatNumber(m.drawNumber)} • ${m.drawDate.toIso8601String().substring(0, 10)}',
                           style: const TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                         Text(
-                          'Net after 20% tax: ${DigitNormalizer.formatCurrencyBDT(m.netPrizeAmount)}',
+                          '${_locale.t("net_receivable")}: ${_locale.formatCurrency(m.netPrizeAmount)} (${_locale.t("tax_20")})',
                           style: const TextStyle(color: Colors.white60, fontSize: 11),
                         ),
                       ],
@@ -262,29 +280,21 @@ class _WalletScreenState extends State<WalletScreen> {
                     color: Colors.white.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.white54, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'No winning matches in recent 8 draws (2 years).',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      const Icon(Icons.info_outline, color: Colors.white54, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _locale.t('no_win_in_8'),
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ],
               const SizedBox(height: 16),
-              if (bond.tags.isNotEmpty)
-                Wrap(
-                  spacing: 6,
-                  children: bond.tags.map((t) {
-                    return Chip(
-                      label: Text(t, style: const TextStyle(fontSize: 11, color: Colors.white)),
-                      backgroundColor: Colors.white12,
-                    );
-                  }).toList(),
-                ),
             ],
           ),
         );
@@ -292,12 +302,44 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  void _openRangeInput() async {
-    final result = await showModalBottomSheet<List<Bond>>(
+  Future<bool?> _showDeleteConfirmDialog(Bond bond) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF131D2A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          _locale.t('delete_confirm_title'),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          '${_locale.t('delete_confirm_msg')} ${_locale.isBangla ? DigitNormalizer.toBengaliDigits(bond.displayName) : bond.displayName}?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_locale.t('cancel'), style: const TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF5252),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_locale.t('delete')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openManualAdd() async {
+    final result = await showModalBottomSheet<Bond>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => RangeInputModal(walletService: widget.walletService),
+      builder: (ctx) => ManualAddModal(walletService: widget.walletService),
     );
 
     if (result != null) {
@@ -306,7 +348,7 @@ class _WalletScreenState extends State<WalletScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: const Color(0xFF006A4E),
-            content: Text('Added ${result.length} bonds to your collection!'),
+            content: Text(_locale.t('bond_added_msg')),
           ),
         );
       }
@@ -317,235 +359,215 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget build(BuildContext context) {
     final filtered = _getFilteredBonds();
 
-    // Calculate unique series for filter chips
-    final allSeries = widget.walletService.bonds
-        .map((b) => b.seriesPrefix)
-        .where((s) => s != null && s.isNotEmpty)
-        .toSet()
-        .toList();
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF0B192C),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0B192C),
-        elevation: 0,
-        title: const Text(
-          'My Prize Bonds',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_to_photos, color: Color(0xFFD4AF37)),
-            tooltip: 'Add Range',
-            onPressed: _openRangeInput,
+    return AnimatedBuilder(
+      animation: _locale,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFF0B192C),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0B192C),
+            elevation: 0,
+            title: Text(
+              _locale.t('my_bonds'),
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            actions: [
+              const LanguageToggleButton(),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline, color: Color(0xFF00FF66)),
+                tooltip: _locale.t('add_bond_action'),
+                onPressed: _openManualAdd,
+              ),
+              IconButton(
+                icon: const Icon(Icons.qr_code_scanner, color: Color(0xFFD4AF37)),
+                tooltip: _locale.t('scan_bonds_action'),
+                onPressed: widget.onOpenScanner,
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF00FF66)),
-            tooltip: 'Scan Camera',
-            onPressed: widget.onOpenScanner,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Search & Filters Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: TextField(
-              controller: _searchController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Search serial, series, or tag...',
-                hintStyle: const TextStyle(color: Colors.white38),
-                prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.white54),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-                filled: true,
-                fillColor: const Color(0xFF1E2D40),
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
+          body: Column(
+            children: [
+              // Search & Filters Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: TextField(
+                  controller: _searchController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: _locale.t('search_bonds'),
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.white54),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFF131D2A),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Colors.white10),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFF006A4E)),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
 
-          // Filter row
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              children: [
-                FilterChip(
-                  label: const Text('All Bonds'),
-                  selected: _activeFilter == BondFilter.all && _selectedSeriesFilter == null,
-                  onSelected: (_) {
-                    setState(() {
-                      _activeFilter = BondFilter.all;
-                      _selectedSeriesFilter = null;
-                    });
-                  },
-                  selectedColor: const Color(0xFF006A4E),
-                  labelStyle: TextStyle(
-                    color: _activeFilter == BondFilter.all && _selectedSeriesFilter == null
-                        ? Colors.white
-                        : Colors.white70,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  avatar: const Icon(Icons.emoji_events, size: 16, color: Color(0xFFFFF176)),
-                  label: const Text('Winners Only'),
-                  selected: _activeFilter == BondFilter.winningOnly,
-                  onSelected: (selected) {
-                    setState(() {
-                      _activeFilter = selected ? BondFilter.winningOnly : BondFilter.all;
-                    });
-                  },
-                  selectedColor: const Color(0xFF006A4E),
-                  labelStyle: TextStyle(
-                    color: _activeFilter == BondFilter.winningOnly ? Colors.white : Colors.white70,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (allSeries.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  ...allSeries.map((series) {
-                    final isSelected = _selectedSeriesFilter == series;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: FilterChip(
-                        label: Text('Series $series'),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            _selectedSeriesFilter = selected ? series : null;
-                          });
-                        },
-                        selectedColor: const Color(0xFFD4AF37),
-                        labelStyle: TextStyle(
-                          color: isSelected ? Colors.black : Colors.white70,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
+              // Filter row
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Row(
+                  children: [
+                    FilterChip(
+                      label: Text(_locale.t('filter_all')),
+                      selected: _activeFilter == BondFilter.all,
+                      onSelected: (_) {
+                        setState(() {
+                          _activeFilter = BondFilter.all;
+                        });
+                      },
+                      selectedColor: const Color(0xFF006A4E),
+                      labelStyle: TextStyle(
+                        color: _activeFilter == BondFilter.all ? Colors.white : Colors.white70,
+                        fontWeight: FontWeight.bold,
                       ),
-                    );
-                  }),
-                ],
-              ],
-            ),
-          ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      avatar: const Icon(Icons.emoji_events, size: 16, color: Color(0xFFFFF176)),
+                      label: Text(_locale.t('filter_winning')),
+                      selected: _activeFilter == BondFilter.winningOnly,
+                      onSelected: (selected) {
+                        setState(() {
+                          _activeFilter = selected ? BondFilter.winningOnly : BondFilter.all;
+                        });
+                      },
+                      selectedColor: const Color(0xFF006A4E),
+                      labelStyle: TextStyle(
+                        color: _activeFilter == BondFilter.winningOnly ? Colors.white : Colors.white70,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-          const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-          // Bonds List or Empty state
-          Expanded(
-            child: filtered.isEmpty
-                ? _buildEmptyState()
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final bond = filtered[index];
-                      final matches = widget.matchingEngine.checkBond(bond);
-                      final isWinner = matches.isNotEmpty;
+              // Bonds List or Empty state
+              Expanded(
+                child: filtered.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (ctx, i) {
+                          final bond = filtered[i];
+                          final matches = widget.matchingEngine.checkBond(bond);
+                          final isWinner = matches.isNotEmpty;
+                          final hasImage = bond.imagePath != null && File(bond.imagePath!).existsSync();
 
-                      return Card(
-                        color: isWinner
-                            ? const Color(0xFF006A4E).withOpacity(0.25)
-                            : const Color(0xFF172333),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          side: BorderSide(
-                            color: isWinner ? const Color(0xFF00FF66) : Colors.white12,
-                            width: isWinner ? 1.5 : 1,
-                          ),
-                        ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                          onTap: () => _showBondDetails(bond, matches),
-                          leading: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: (bond.imagePath != null && File(bond.imagePath!).existsSync())
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: isWinner
+                                  ? const Color(0xFF006A4E).withOpacity(0.2)
+                                  : const Color(0xFF131D2A),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isWinner
+                                    ? const Color(0xFF00FF66).withOpacity(0.8)
+                                    : Colors.white10,
+                              ),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                              leading: hasImage
                                   ? GestureDetector(
                                       onTap: () => _showFullImageDialog(context, bond.imagePath!),
-                                      child: Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          Image.file(
-                                            File(bond.imagePath!),
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => _buildDefaultAvatar(isWinner),
-                                          ),
-                                          Positioned(
-                                            bottom: 2,
-                                            right: 2,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(2),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black87,
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: const Icon(Icons.zoom_in, color: Colors.white70, size: 10),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Stack(
+                                          alignment: Alignment.bottomRight,
+                                          children: [
+                                            Image.file(
+                                              File(bond.imagePath!),
+                                              width: 48,
+                                              height: 48,
+                                              fit: BoxFit.cover,
                                             ),
-                                          ),
-                                        ],
+                                            Container(
+                                              color: Colors.black54,
+                                              padding: const EdgeInsets.all(2),
+                                              child: const Icon(Icons.zoom_in, color: Colors.white, size: 10),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     )
                                   : _buildDefaultAvatar(isWinner),
-                            ),
-                          ),
-                          title: Row(
-                            children: [
-                              Text(
-                                bond.displayName,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  letterSpacing: 0.5,
-                                ),
+                              title: Row(
+                                children: [
+                                  Text(
+                                    _locale.isBangla
+                                        ? DigitNormalizer.toBengaliDigits(bond.displayName)
+                                        : bond.displayName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                  if (isWinner) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF006A4E),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        _locale.isBangla ? 'বিজয়ী' : 'WINNER',
+                                        style: const TextStyle(
+                                          color: Color(0xFFFFF176),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                DigitNormalizer.toBengaliDigits(bond.serialNumber),
-                                style: const TextStyle(
-                                  color: Colors.white38,
+                              subtitle: Text(
+                                isWinner
+                                    ? '${_locale.isBangla ? "বিজয়ী" : "Won"} ${_locale.formatCurrency(matches.first.prizeAmount)} (${_locale.t("draw_no")}${_locale.formatNumber(matches.first.drawNumber)})'
+                                    : (_locale.isBangla ? '১০০ টাকা প্রাইজ বন্ড' : '৳100 Prize Bond'),
+                                style: TextStyle(
+                                  color: isWinner ? const Color(0xFF00FF66) : Colors.white54,
                                   fontSize: 12,
                                 ),
                               ),
-                            ],
-                          ),
-                          subtitle: isWinner
-                              ? Text(
-                                  '🎉 Won ${DigitNormalizer.formatCurrencyBDT(matches.first.prizeAmount)} (${matches.first.tierName})',
-                                  style: const TextStyle(
-                                    color: Color(0xFF00FF66),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                )
-                              : Text(
-                                  bond.tags.isNotEmpty ? bond.tags.join(', ') : '৳100 Prize Bond',
-                                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                                ),
-                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-                        ),
-                      );
-                    },
-                  ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.chevron_right, color: Colors.white38),
+                                onPressed: () => _showBondDetails(bond, matches),
+                              ),
+                              onTap: () => _showBondDetails(bond, matches),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -554,19 +576,19 @@ class _WalletScreenState extends State<WalletScreen> {
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.account_balance_wallet_outlined, size: 64, color: Colors.white24),
+            const Icon(Icons.wallet, size: 64, color: Colors.white24),
             const SizedBox(height: 16),
-            const Text(
-              'No Prize Bonds Found',
-              style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              _locale.t('empty_wallet_title'),
+              style: const TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Scan physical bonds with your camera or add a sequential serial range.',
+            Text(
+              _locale.t('empty_wallet_sub'),
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white38, fontSize: 13),
+              style: const TextStyle(color: Colors.white38, fontSize: 13),
             ),
             const SizedBox(height: 24),
             Row(
@@ -577,10 +599,11 @@ class _WalletScreenState extends State<WalletScreen> {
                     backgroundColor: const Color(0xFF006A4E),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: widget.onOpenScanner,
                   icon: const Icon(Icons.camera_alt),
-                  label: const Text('Scan Bonds'),
+                  label: Text(_locale.t('scan_bonds_action')),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
@@ -588,10 +611,11 @@ class _WalletScreenState extends State<WalletScreen> {
                     foregroundColor: const Color(0xFFD4AF37),
                     side: const BorderSide(color: Color(0xFFD4AF37)),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: _openRangeInput,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Range'),
+                  onPressed: _openManualAdd,
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: Text(_locale.t('add_bond_action')),
                 ),
               ],
             ),

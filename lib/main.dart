@@ -7,6 +7,7 @@ import 'features/scanner/scanner_screen.dart';
 import 'features/settings/rules_screen.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'services/draw_service.dart';
+import 'services/locale_service.dart';
 import 'services/wallet_service.dart';
 
 void main() async {
@@ -25,10 +26,12 @@ void main() async {
   final matchingEngine = MatchingEngine();
   final drawService = DrawService(engine: matchingEngine);
   final walletService = WalletService();
+  final localeService = LocaleService();
 
   // Initialize offline services and load cached data
   await drawService.initialize();
   await walletService.initialize();
+  await localeService.initialize();
 
   runApp(
     PrizeBondApp(
@@ -102,6 +105,7 @@ class MainNavigationShell extends StatefulWidget {
 
 class _MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
+  final LocaleService _locale = LocaleService();
 
   void _openScanner() {
     Navigator.of(context).push(
@@ -112,7 +116,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         ),
       ),
     ).then((_) {
-      // Re-trigger build on returning from scanner
       setState(() {});
     });
   }
@@ -123,29 +126,43 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF131D2A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.exit_to_app, color: Color(0xFFD4AF37), size: 28),
-            SizedBox(width: 10),
-            Text(
-              'Exit Application?',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/images/app_logo.png',
+                width: 32,
+                height: 32,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.exit_to_app, color: Color(0xFFD4AF37), size: 28),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _locale.t('exit_title'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
         ),
-        content: const Text(
-          'Are you sure you want to close Bangladesh Prize Bond Checker?',
-          style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+        content: Text(
+          _locale.t('exit_msg'),
+          style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
         ),
         actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Stay', style: TextStyle(color: Colors.white70)),
+            child: Text(
+              _locale.t('stay'),
+              style: const TextStyle(color: Colors.white70),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -154,7 +171,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Exit App'),
+            child: Text(_locale.t('exit_btn')),
           ),
         ],
       ),
@@ -182,52 +199,55 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       const RulesScreen(),
     ];
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        // If on another tab, back navigates to Home tab first
-        if (_currentIndex != 0) {
-          setState(() {
-            _currentIndex = 0;
-          });
-          return;
-        }
-        // If already on Home tab, prompt confirmation before exiting
-        final shouldExit = await _showExitConfirmationDialog();
-        if (shouldExit) {
-          SystemNavigator.pop();
-        }
-      },
-      child: Scaffold(
-        body: IndexedStack(
-          index: _currentIndex,
-          children: screens,
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-        floatingActionButton: FloatingActionButton(
-          backgroundColor: const Color(0xFF006A4E),
-          foregroundColor: const Color(0xFFFFF176),
-          elevation: 6,
-          onPressed: _openScanner,
-          child: const Icon(Icons.qr_code_scanner, size: 28),
-        ),
-        bottomNavigationBar: BottomAppBar(
-          color: const Color(0xFF131D2A),
-          shape: const CircularNotchedRectangle(),
-          notchMargin: 8,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavTab(icon: Icons.dashboard, label: 'Home', index: 0),
-              _buildNavTab(icon: Icons.account_balance_wallet, label: 'Wallet', index: 1),
-              const SizedBox(width: 48), // Space for floating scanner button
-              _buildNavTab(icon: Icons.emoji_events, label: 'Draws', index: 2),
-              _buildNavTab(icon: Icons.info_outline, label: 'Guide', index: 3),
-            ],
+    return AnimatedBuilder(
+      animation: _locale,
+      builder: (context, _) {
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            if (_currentIndex != 0) {
+              setState(() {
+                _currentIndex = 0;
+              });
+              return;
+            }
+            final shouldExit = await _showExitConfirmationDialog();
+            if (shouldExit) {
+              SystemNavigator.pop();
+            }
+          },
+          child: Scaffold(
+            body: IndexedStack(
+              index: _currentIndex,
+              children: screens,
+            ),
+            floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+            floatingActionButton: FloatingActionButton(
+              backgroundColor: const Color(0xFF006A4E),
+              foregroundColor: const Color(0xFFFFF176),
+              elevation: 6,
+              onPressed: _openScanner,
+              child: const Icon(Icons.qr_code_scanner, size: 28),
+            ),
+            bottomNavigationBar: BottomAppBar(
+              color: const Color(0xFF131D2A),
+              shape: const CircularNotchedRectangle(),
+              notchMargin: 8,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildNavTab(icon: Icons.dashboard, label: _locale.t('nav_home'), index: 0),
+                  _buildNavTab(icon: Icons.account_balance_wallet, label: _locale.t('nav_wallet'), index: 1),
+                  const SizedBox(width: 48), // Space for floating scanner button
+                  _buildNavTab(icon: Icons.emoji_events, label: _locale.t('nav_draws'), index: 2),
+                  _buildNavTab(icon: Icons.menu_book, label: _locale.t('nav_guide'), index: 3),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

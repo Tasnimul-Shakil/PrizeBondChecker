@@ -132,6 +132,20 @@ class Draw {
   int get totalWinnersCount =>
       prizes.fold(0, (sum, tier) => sum + tier.winningNumbers.length);
 
+  /// Convenience method to get winning numbers for a specific tier (1-5)
+  List<String> getNumbersForTier(int tier) {
+    for (final p in prizes) {
+      if (p.tier == tier) return p.winningNumbers;
+    }
+    return const [];
+  }
+
+  List<String> get firstPrize => getNumbersForTier(1);
+  List<String> get secondPrize => getNumbersForTier(2);
+  List<String> get thirdPrize => getNumbersForTier(3);
+  List<String> get fourthPrize => getNumbersForTier(4);
+  List<String> get fifthPrize => getNumbersForTier(5);
+
   /// Checks if this draw is within the legal 2-year claim window from [referenceDate].
   bool isWithinLegalWindow([DateTime? referenceDate]) {
     final now = referenceDate ?? DateTime.now();

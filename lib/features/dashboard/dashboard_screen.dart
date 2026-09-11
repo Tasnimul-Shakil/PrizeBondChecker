@@ -3,8 +3,9 @@ import '../../core/digit_normalizer.dart';
 import '../../core/matching_engine.dart';
 import '../../models/bond.dart';
 import '../../services/draw_service.dart';
+import '../../services/locale_service.dart';
 import '../../services/wallet_service.dart';
-import '../wallet/range_input_modal.dart';
+import '../wallet/manual_add_modal.dart';
 
 class DashboardScreen extends StatefulWidget {
   final WalletService walletService;
@@ -30,6 +31,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   WalletMatchSummary? _summary;
+  final LocaleService _locale = LocaleService();
 
   @override
   void initState() {
@@ -44,12 +46,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  void _openRangeModal() async {
-    final res = await showModalBottomSheet<List<Bond>>(
+  void _openManualAdd() async {
+    final res = await showModalBottomSheet<Bond>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => RangeInputModal(walletService: widget.walletService),
+      builder: (ctx) => ManualAddModal(walletService: widget.walletService),
     );
 
     if (res != null) {
@@ -58,11 +60,228 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: const Color(0xFF006A4E),
-            content: Text('Added ${res.length} bonds to your collection!'),
+            content: Text(_locale.t('bond_added_msg')),
           ),
         );
       }
     }
+  }
+
+  void _showAllResultsModal() {
+    _recalculateSummary();
+    final summary = _summary;
+    final winningBonds = summary?.winningBonds ?? [];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF131D2A),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.65,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (_, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Column(
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Icon(
+                        winningBonds.isNotEmpty ? Icons.emoji_events : Icons.verified,
+                        color: winningBonds.isNotEmpty ? const Color(0xFFFFF176) : const Color(0xFF00FF66),
+                        size: 28,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          winningBonds.isNotEmpty
+                              ? _locale.t('modal_winning_title')
+                              : _locale.t('modal_no_win_title'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0B192C),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildModalStat(
+                          _locale.t('total_bonds'),
+                          _locale.formatNumber(widget.walletService.count),
+                        ),
+                        Container(width: 1, height: 28, color: Colors.white12),
+                        _buildModalStat(
+                          _locale.t('winning_bonds'),
+                          _locale.formatNumber(winningBonds.length),
+                          valueColor: const Color(0xFF00FF66),
+                        ),
+                        Container(width: 1, height: 28, color: Colors.white12),
+                        _buildModalStat(
+                          _locale.t('total_won'),
+                          _locale.formatCurrency(summary?.totalPrizeAmount ?? 0.0),
+                          valueColor: const Color(0xFFFFF176),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (winningBonds.isEmpty) ...[
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.sentiment_satisfied_alt, color: Colors.white30, size: 54),
+                            const SizedBox(height: 12),
+                            Text(
+                              _locale.t('modal_checked_msg'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _locale.t('modal_better_luck'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    Expanded(
+                      child: ListView.builder(
+                        controller: scrollController,
+                        itemCount: winningBonds.length,
+                        itemBuilder: (ctx, i) {
+                          final bond = winningBonds[i];
+                          final matches = widget.matchingEngine.checkBond(bond);
+                          if (matches.isEmpty) return const SizedBox();
+                          final firstMatch = matches.first;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  const Color(0xFF006A4E).withOpacity(0.35),
+                                  const Color(0xFF131D2A),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFF006A4E)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF006A4E),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        _locale.isBangla
+                                            ? DigitNormalizer.toBengaliDigits(bond.displayName)
+                                            : bond.displayName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      _locale.formatCurrency(firstMatch.prizeAmount),
+                                      style: const TextStyle(
+                                        color: Color(0xFFFFF176),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${_locale.isBangla ? firstMatch.tierNameBn : firstMatch.tierName} • ${_locale.t('draw_no')}${_locale.formatNumber(firstMatch.drawNumber)}',
+                                  style: const TextStyle(color: Color(0xFF00FF66), fontSize: 12, fontWeight: FontWeight.w600),
+                                ),
+                                Text(
+                                  '${_locale.t('net_receivable')}: ${_locale.formatCurrency(firstMatch.netPrizeAmount)} (${_locale.t('tax_20')})',
+                                  style: const TextStyle(color: Colors.white60, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF006A4E),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text(_locale.t('close'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildModalStat(String label, String value, {Color valueColor = Colors.white}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value, style: TextStyle(color: valueColor, fontWeight: FontWeight.bold, fontSize: 15)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+      ],
+    );
   }
 
   @override
@@ -73,112 +292,169 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final winningCount = _summary?.winningBondsCount ?? 0;
     final latestDraw = widget.drawService.latestDraw;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0B192C),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0B192C),
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF006A4E),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.stars, color: Color(0xFFD4AF37), size: 20),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'Prize Bond Scanner',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white70),
-            tooltip: 'Re-check Results',
-            onPressed: () {
-              _recalculateSummary();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  duration: Duration(seconds: 1),
-                  backgroundColor: Color(0xFF006A4E),
-                  content: Text('Verification refreshed across all 8 draws!'),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          _recalculateSummary();
-        },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // 1. Hero Portfolio & Winning Card
-            _buildHeroCard(
-              totalInvestment: totalInvestment,
-              bondsCount: bondsCount,
-              winningAmount: winningAmount,
-              winningCount: winningCount,
-            ),
-            const SizedBox(height: 16),
-
-            // 2. Winning Celebration Banner if any bond won
-            if (winningCount > 0) ...[
-              _buildWinnerCelebrationBanner(),
-              const SizedBox(height: 16),
-            ],
-
-            // 3. Quick Action Grid
-            const Text(
-              'Quick Actions',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _buildQuickActionsGrid(),
-            const SizedBox(height: 20),
-
-            // 4. Latest Official Draw Status
-            if (latestDraw != null) ...[
-              _buildLatestDrawCard(latestDraw),
-              const SizedBox(height: 20),
-            ],
-
-            // 5. Recent Bonds Header & List
-            Row(
+    return AnimatedBuilder(
+      animation: _locale,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFF0B192C),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0B192C),
+            elevation: 0,
+            title: Row(
               children: [
-                const Text(
-                  'Recent Bonds',
-                  style: TextStyle(
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/images/app_logo.png',
+                    width: 32,
+                    height: 32,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF006A4E),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.stars, color: Color(0xFFD4AF37), size: 20),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _locale.t('app_name'),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 17,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              const LanguageToggleButton(),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.white70),
+                tooltip: _locale.isBangla ? 'রিফ্রেশ' : 'Refresh',
+                onPressed: () {
+                  _recalculateSummary();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      duration: const Duration(seconds: 1),
+                      backgroundColor: const Color(0xFF006A4E),
+                      content: Text(
+                        _locale.isBangla
+                            ? 'সবগুলো ড্রয়ের সাথে ফলাফল যাচাই করা হয়েছে!'
+                            : 'Results re-checked across all 8 draws!',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          body: RefreshIndicator(
+            onRefresh: () async {
+              _recalculateSummary();
+            },
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // 1. Hero Portfolio & Winning Card
+                _buildHeroCard(
+                  totalInvestment: totalInvestment,
+                  bondsCount: bondsCount,
+                  winningAmount: winningAmount,
+                  winningCount: winningCount,
+                ),
+                const SizedBox(height: 16),
+
+                // 2. Check All Results Action Button
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFD4AF37), Color(0xFFAA820A)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFD4AF37).withOpacity(0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: _showAllResultsModal,
+                    icon: const Icon(Icons.verified, color: Color(0xFF0B192C), size: 22),
+                    label: Text(
+                      _locale.t('check_all_bonds'),
+                      style: const TextStyle(
+                        color: Color(0xFF0B192C),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // 3. Quick Actions Grid (Clean, Range-free)
+                Text(
+                  _locale.t('quick_actions'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const Spacer(),
-                TextButton(
-                  onPressed: widget.onOpenWallet,
-                  child: const Text(
-                    'View All',
-                    style: TextStyle(color: Color(0xFFD4AF37)),
-                  ),
+                const SizedBox(height: 10),
+                _buildQuickActionsGrid(),
+                const SizedBox(height: 20),
+
+                // 4. Latest Official Draw Status
+                if (latestDraw != null) ...[
+                  _buildLatestDrawCard(latestDraw),
+                  const SizedBox(height: 20),
+                ],
+
+                // 5. Recent Bonds Header & List
+                Row(
+                  children: [
+                    Text(
+                      _locale.t('recent_bonds'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: widget.onOpenWallet,
+                      child: Text(
+                        _locale.t('see_all'),
+                        style: const TextStyle(color: Color(0xFFD4AF37)),
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 8),
+                _buildRecentBondsList(),
               ],
             ),
-            const SizedBox(height: 8),
-            _buildRecentBondsList(),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -203,6 +479,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             offset: const Offset(0, 6),
           ),
         ],
+        border: Border.all(color: const Color(0xFF006A4E).withOpacity(0.6)),
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -210,74 +487,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Row(
             children: [
-              const Text(
-                'Total Prize Money Won',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.black26,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '$bondsCount Bonds Tracked',
-                  style: const TextStyle(color: Colors.white, fontSize: 11),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            DigitNormalizer.formatCurrencyBDT(winningAmount),
-            style: const TextStyle(
-              color: Color(0xFFFFF176),
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-            ),
-          ),
-          if (winningAmount > 0)
-            Text(
-              'Net: ${DigitNormalizer.formatCurrencyBDT(winningAmount * 0.80)} (after 20% source tax)',
-              style: const TextStyle(color: Colors.white60, fontSize: 11),
-            ),
-          const SizedBox(height: 16),
-          const Divider(color: Colors.white24, height: 1),
-          const SizedBox(height: 12),
-          Row(
-            children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Total Value', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                  const SizedBox(height: 2),
                   Text(
-                    DigitNormalizer.formatCurrencyBDT(totalInvestment),
+                    _locale.t('total_investment'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _locale.formatCurrency(totalInvestment.toDouble()),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text('Winning Bonds', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$winningCount / $bondsCount',
-                    style: TextStyle(
-                      color: winningCount > 0 ? const Color(0xFF00FF66) : Colors.white,
-                      fontSize: 16,
+                      fontSize: 26,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.confirmation_number, color: Color(0xFFFFF176), size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${_locale.formatNumber(bondsCount)} ${_locale.isBangla ? 'টি বন্ড' : 'Bonds'}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Divider(color: Colors.white24, height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildMiniMetric(
+                label: _locale.t('winning_bonds'),
+                value: _locale.formatNumber(winningCount),
+                color: winningCount > 0 ? const Color(0xFF00FF66) : Colors.white70,
+              ),
+              _buildMiniMetric(
+                label: _locale.t('total_won'),
+                value: _locale.formatCurrency(winningAmount),
+                color: const Color(0xFFFFF176),
               ),
             ],
           ),
@@ -286,50 +551,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildWinnerCelebrationBanner() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFD4AF37).withOpacity(0.15),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFD4AF37)),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          const Text('🏆', style: TextStyle(fontSize: 28)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'CONGRATULATIONS!',
-                  style: TextStyle(
-                    color: Color(0xFFFFF176),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'You have ${_summary?.winningBondsCount} winning bond(s) in active draws!',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF006A4E),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: widget.onOpenWallet,
-            child: const Text('View', style: TextStyle(fontSize: 12)),
-          ),
-        ],
-      ),
+  Widget _buildMiniMetric({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+      ],
     );
   }
 
@@ -339,8 +575,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Expanded(
           child: _buildActionTile(
             icon: Icons.camera_alt,
-            title: 'Scan Bond',
-            subtitle: 'Camera OCR',
+            title: _locale.t('scan_bonds_action'),
+            subtitle: _locale.t('scan_bonds_sub'),
             color: const Color(0xFF006A4E),
             onTap: widget.onOpenScanner,
           ),
@@ -348,19 +584,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(width: 10),
         Expanded(
           child: _buildActionTile(
-            icon: Icons.format_list_numbered,
-            title: 'Add Range',
-            subtitle: 'Serial Series',
+            icon: Icons.add_circle_outline,
+            title: _locale.t('add_bond_action'),
+            subtitle: _locale.t('add_bond_sub'),
             color: const Color(0xFF1E3E62),
-            onTap: _openRangeModal,
+            onTap: _openManualAdd,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: _buildActionTile(
-            icon: Icons.history_edu,
-            title: 'Draw Results',
-            subtitle: '8 Quarters',
+            icon: Icons.emoji_events_outlined,
+            title: _locale.t('draw_results_action'),
+            subtitle: _locale.t('draw_results_sub'),
             color: const Color(0xFF4A3E1A),
             onTap: widget.onOpenDraws,
           ),
@@ -380,7 +616,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         decoration: BoxDecoration(
           color: color.withOpacity(0.35),
           borderRadius: BorderRadius.circular(14),
@@ -403,6 +639,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Text(
               subtitle,
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Colors.white54, fontSize: 10),
             ),
           ],
@@ -414,7 +652,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildLatestDrawCard(dynamic draw) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF172333),
+        color: const Color(0xFF131D2A),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white12),
       ),
@@ -435,15 +673,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Latest Draw #${draw.drawNumber}',
+                  '${_locale.t('latest_draw')}: ${_locale.t('draw_no')}${_locale.formatNumber(draw.drawNumber)}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  'Held on ${draw.drawDate.toIso8601String().substring(0, 10)} • 1st Prize ৳6,00,000',
+                  '${_locale.t('draw_date')}: ${draw.drawDate.toIso8601String().substring(0, 10)} • ${_locale.isBangla ? "১ম পুরস্কার ১৬ লাখ" : "1st Prize 16L"}',
                   style: const TextStyle(color: Colors.white60, fontSize: 12),
                 ),
               ],
@@ -465,14 +704,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF172333),
+          color: const Color(0xFF131D2A),
           borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
         ),
-        child: const Center(
+        child: Center(
           child: Text(
-            'No prize bonds added yet.\nTap "Scan Bond" to start adding.',
+            '${_locale.t('no_bonds_dash')}\n${_locale.t('no_bonds_dash_sub')}',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white38, fontSize: 13),
+            style: const TextStyle(color: Colors.white38, fontSize: 12, height: 1.4),
           ),
         ),
       );
@@ -486,7 +726,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return Card(
           color: isWinner
               ? const Color(0xFF006A4E).withOpacity(0.25)
-              : const Color(0xFF172333),
+              : const Color(0xFF131D2A),
           margin: const EdgeInsets.only(bottom: 8),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -501,7 +741,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: isWinner ? const Color(0xFFFFF176) : const Color(0xFFD4AF37),
             ),
             title: Text(
-              bond.displayName,
+              _locale.isBangla ? DigitNormalizer.toBengaliDigits(bond.displayName) : bond.displayName,
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -510,8 +750,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             subtitle: Text(
               isWinner
-                  ? 'Won ${DigitNormalizer.formatCurrencyBDT(matches.first.prizeAmount)} in Draw #${matches.first.drawNumber}'
-                  : '৳100 Prize Bond',
+                  ? '${_locale.isBangla ? "বিজয়ী" : "Won"} ${_locale.formatCurrency(matches.first.prizeAmount)} • ${_locale.t("draw_no")}${_locale.formatNumber(matches.first.drawNumber)}'
+                  : (_locale.isBangla ? '১০০ টাকা প্রাইজ বন্ড' : '৳100 Prize Bond'),
               style: TextStyle(
                 color: isWinner ? const Color(0xFF00FF66) : Colors.white54,
                 fontSize: 11,
