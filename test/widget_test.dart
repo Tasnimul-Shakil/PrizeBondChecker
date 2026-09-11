@@ -1,30 +1,19 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:price_bond_checker/main.dart';
+import 'package:prize_bond_checker/core/digit_normalizer.dart';
+import 'package:prize_bond_checker/models/bond.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('DigitNormalizer converts Bengali digits and normalizes 7-digit numbers', () {
+    expect(DigitNormalizer.toEnglishDigits('০৭৮৬৩৪৫'), '0786345');
+    expect(DigitNormalizer.normalizeSerial('০৭৮৬৩৪৫'), '0786345');
+    expect(DigitNormalizer.toBengaliDigits('0786345'), '০৭৮৬৩৪৫');
+    expect(DigitNormalizer.isValidSerial('0786345'), isTrue);
+    expect(DigitNormalizer.isValidSerial('12345'), isFalse);
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('Bond model displays 7-digit serial number', () {
+    final bond = Bond(serialNumber: '0786345');
+    expect(bond.displayName, '0786345');
+    expect(bond.denomination, 100);
   });
 }

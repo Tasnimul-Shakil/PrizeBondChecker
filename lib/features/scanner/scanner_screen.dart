@@ -240,6 +240,34 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   void _handleDetectedBond(String serial, String? series) {
     _lastDetectionTime = DateTime.now();
 
+    // Prevent duplicate scan if bond is already in the user's wallet
+    if (widget.widgetWalletService.containsSerial(serial)) {
+      if (mounted && _lastDetectedSerial != serial) {
+        _lastDetectedSerial = serial;
+        HapticFeedback.lightImpact();
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFFD4AF37),
+            duration: const Duration(seconds: 2),
+            content: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.black),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Bond $serial is already in your wallet!',
+                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     if (_currentMode == ScanMode.single) {
       // Pause stream temporarily to show preview confirmation modal
       try {
@@ -249,8 +277,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
       _showSinglePreviewModal(serial: serial, series: series);
     } else {
-      // Batch Mode: continuous rapid capture
-      if (!_batchCapturedSerials.contains(serial)) {
+      // Batch Mode: continuous rapid capture (ignore duplicates)
+      if (!_batchCapturedSerials.contains(serial) && !widget.widgetWalletService.containsSerial(serial)) {
         HapticFeedback.lightImpact();
         SystemSound.play(SystemSoundType.click);
 
@@ -414,13 +442,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       backgroundColor: Colors.transparent,
       builder: (ctx) => PreviewEditModal(
         initialSerial: serial,
-        initialSeries: series,
         matchingEngine: widget.matchingEngine,
+        walletService: widget.widgetWalletService,
       ),
     );
 
     if (result != null) {
-      await widget.widgetWalletService.addBond(
+      final added = await widget.widgetWalletService.addBond(
         serialNumber: result.serialNumber,
         seriesPrefix: result.seriesPrefix,
         tags: result.tags,
@@ -428,18 +456,36 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: const Color(0xFF006A4E),
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                Text('Bond ${result.displayName} saved to wallet!'),
-              ],
+        if (added != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFF006A4E),
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text('Bond ${result.displayName} saved to wallet!'),
+                ],
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFFD4AF37),
+              content: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.black),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Bond ${result.displayName} is already in your wallet!',
+                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
       }
     }
 
@@ -471,7 +517,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   }
 
   void _openManualEntry() {
-    _showSinglePreviewModal(serial: '0128744', series: 'খ শ');
+    _showSinglePreviewModal(serial: '', series: null);
   }
 
   @override

@@ -22,8 +22,14 @@ class WalletService {
       if (jsonString != null && jsonString.isNotEmpty) {
         final List<dynamic> decoded = jsonDecode(jsonString);
         _bonds.clear();
+        final seenSerials = <String>{};
         for (final item in decoded) {
-          _bonds.add(Bond.fromJson(item as Map<String, dynamic>));
+          final b = Bond.fromJson(item as Map<String, dynamic>);
+          final norm = DigitNormalizer.normalizeSerial(b.serialNumber);
+          if (norm != null && !seenSerials.contains(norm)) {
+            seenSerials.add(norm);
+            _bonds.add(b);
+          }
         }
       }
     } catch (_) {
@@ -32,6 +38,13 @@ class WalletService {
     } finally {
       _isInitialized = true;
     }
+  }
+
+  /// Checks if a 7-digit bond serial number already exists in the wallet.
+  bool containsSerial(String serialNumber) {
+    final normalized = DigitNormalizer.normalizeSerial(serialNumber);
+    if (normalized == null) return false;
+    return _bonds.any((b) => b.serialNumber == normalized);
   }
 
   /// Saves the current list of bonds to persistent storage.
@@ -47,7 +60,8 @@ class WalletService {
 
   /// Adds a single bond to the wallet.
   /// Automatically validates and normalizes the 7-digit serial number.
-  /// Returns the created [Bond], or null if the serial is invalid.
+  /// Strictly prevents duplicate bond numbers: each number can only be added once!
+  /// Returns the created [Bond], or null if invalid or already exists.
   Future<Bond?> addBond({
     required String serialNumber,
     String? seriesPrefix,
@@ -58,38 +72,38 @@ class WalletService {
     final normalized = DigitNormalizer.normalizeSerial(serialNumber);
     if (normalized == null) return null;
 
+    // Reject duplicate: bond number can only be added once!
+    if (containsSerial(normalized)) {
+      return null;
+    }
+
     final bond = Bond(
       serialNumber: normalized,
-      seriesPrefix: seriesPrefix?.trim().toUpperCase(),
+      seriesPrefix: seriesPrefix?.trim().isNotEmpty == true
+          ? seriesPrefix!.trim().toUpperCase()
+          : null,
       batchId: batchId,
       tags: tags,
       notes: notes,
     );
 
-    // Check if identical bond (same serial & series) already exists
-    final existsIndex = _bonds.indexWhere(
-      (b) => b.serialNumber == bond.serialNumber && b.seriesPrefix == bond.seriesPrefix,
-    );
-
-    if (existsIndex >= 0) {
-      // Update existing bond's metadata if needed
-      _bonds[existsIndex] = bond;
-    } else {
-      _bonds.insert(0, bond); // Latest added first
-    }
-
+    _bonds.insert(0, bond); // Latest added first
     await _persist();
     return bond;
   }
 
   /// Adds a batch of bonds at once (e.g. from batch camera scanning).
-  /// Deduplicates items within the batch and skips existing ones if requested.
+  /// Strictly deduplicates so each 7-digit serial number exists only once in the wallet.
   Future<int> addBatch(List<Bond> newBonds) async {
     int addedCount = 0;
+    final seenInBatch = <String>{};
     for (final bond in newBonds) {
-      final exists = _bonds.any(
-        (b) => b.serialNumber == bond.serialNumber && b.seriesPrefix == bond.seriesPrefix,
-      );
+      final norm = DigitNormalizer.normalizeSerial(bond.serialNumber);
+      if (norm == null) continue;
+      if (seenInBatch.contains(norm)) continue;
+      seenInBatch.add(norm);
+
+      final exists = _bonds.any((b) => b.serialNumber == norm);
       if (!exists) {
         _bonds.insert(0, bond);
         addedCount++;
@@ -103,7 +117,8 @@ class WalletService {
   }
 
   /// Generates and adds a continuous sequential range of bonds.
-  /// E.g. Series: "কখ", Start: "0154201", End: "0154250" -> 50 bonds created.
+  /// E.g. Start: "0154201", End: "0154250" -> 50 bonds created.
+  /// Skips any serial numbers that are already in the wallet.
   Future<List<Bond>> addBondRange({
     required String startSerial,
     required String endSerial,
@@ -134,17 +149,24 @@ class WalletService {
 
     for (int i = startInt; i <= endInt; i++) {
       final serialString = i.toString().padLeft(7, '0');
-      generatedBonds.add(
-        Bond(
-          serialNumber: serialString,
-          seriesPrefix: seriesPrefix?.trim(),
-          batchId: batchId,
-          tags: tag != null && tag.isNotEmpty ? [tag] : ['Sequential Range'],
-        ),
-      );
+      // Only include if not already in wallet
+      if (!containsSerial(serialString)) {
+        generatedBonds.add(
+          Bond(
+            serialNumber: serialString,
+            seriesPrefix: seriesPrefix?.trim().isNotEmpty == true
+                ? seriesPrefix!.trim()
+                : null,
+            batchId: batchId,
+            tags: tag != null && tag.isNotEmpty ? [tag] : ['Sequential Range'],
+          ),
+        );
+      }
     }
 
-    await addBatch(generatedBonds);
+    if (generatedBonds.isNotEmpty) {
+      await addBatch(generatedBonds);
+    }
     return generatedBonds;
   }
 

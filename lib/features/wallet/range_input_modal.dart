@@ -14,7 +14,6 @@ class RangeInputModal extends StatefulWidget {
 }
 
 class _RangeInputModalState extends State<RangeInputModal> {
-  final _seriesController = TextEditingController();
   final _startController = TextEditingController();
   final _endController = TextEditingController();
   final _tagController = TextEditingController();
@@ -32,7 +31,6 @@ class _RangeInputModalState extends State<RangeInputModal> {
 
   @override
   void dispose() {
-    _seriesController.dispose();
     _startController.dispose();
     _endController.dispose();
     _tagController.dispose();
@@ -90,9 +88,6 @@ class _RangeInputModalState extends State<RangeInputModal> {
       final List<Bond> generated = await widget.walletService.addBondRange(
         startSerial: start,
         endSerial: end,
-        seriesPrefix: _seriesController.text.trim().isNotEmpty
-            ? _seriesController.text.trim()
-            : null,
         tag: _tagController.text.trim().isNotEmpty
             ? _tagController.text.trim()
             : null,
@@ -156,20 +151,6 @@ class _RangeInputModalState extends State<RangeInputModal> {
                   onPressed: () => Navigator.pop(context),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-
-            // Series prefix input
-            TextField(
-              controller: _seriesController,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              decoration: InputDecoration(
-                labelText: 'Series Prefix (Optional, e.g. কখ, GA)',
-                labelStyle: const TextStyle(color: Colors.white60),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.06),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
             ),
             const SizedBox(height: 12),
 

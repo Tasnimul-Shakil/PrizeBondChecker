@@ -64,7 +64,6 @@ class PrizeBondApp extends StatelessWidget {
           primary: Color(0xFF006A4E),
           secondary: Color(0xFFD4AF37),
           surface: Color(0xFF131D2A),
-          background: Color(0xFF0B192C),
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF0B192C),
@@ -118,6 +117,51 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     });
   }
 
+  Future<bool> _showExitConfirmationDialog() async {
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF131D2A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.exit_to_app, color: Color(0xFFD4AF37), size: 28),
+            SizedBox(width: 10),
+            Text(
+              'Exit Application?',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to close Bangladesh Prize Bond Checker?',
+          style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+        ),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Stay', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF006A4E),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Exit App'),
+          ),
+        ],
+      ),
+    );
+    return shouldExit ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final screens = [
@@ -138,32 +182,50 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       const RulesScreen(),
     ];
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: screens,
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF006A4E),
-        foregroundColor: const Color(0xFFFFF176),
-        elevation: 6,
-        onPressed: _openScanner,
-        child: const Icon(Icons.qr_code_scanner, size: 28),
-      ),
-      bottomNavigationBar: BottomAppBar(
-        color: const Color(0xFF131D2A),
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavTab(icon: Icons.dashboard, label: 'Home', index: 0),
-            _buildNavTab(icon: Icons.account_balance_wallet, label: 'Wallet', index: 1),
-            const SizedBox(width: 48), // Space for floating scanner button
-            _buildNavTab(icon: Icons.emoji_events, label: 'Draws', index: 2),
-            _buildNavTab(icon: Icons.info_outline, label: 'Guide', index: 3),
-          ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        // If on another tab, back navigates to Home tab first
+        if (_currentIndex != 0) {
+          setState(() {
+            _currentIndex = 0;
+          });
+          return;
+        }
+        // If already on Home tab, prompt confirmation before exiting
+        final shouldExit = await _showExitConfirmationDialog();
+        if (shouldExit) {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: screens,
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: const Color(0xFF006A4E),
+          foregroundColor: const Color(0xFFFFF176),
+          elevation: 6,
+          onPressed: _openScanner,
+          child: const Icon(Icons.qr_code_scanner, size: 28),
+        ),
+        bottomNavigationBar: BottomAppBar(
+          color: const Color(0xFF131D2A),
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavTab(icon: Icons.dashboard, label: 'Home', index: 0),
+              _buildNavTab(icon: Icons.account_balance_wallet, label: 'Wallet', index: 1),
+              const SizedBox(width: 48), // Space for floating scanner button
+              _buildNavTab(icon: Icons.emoji_events, label: 'Draws', index: 2),
+              _buildNavTab(icon: Icons.info_outline, label: 'Guide', index: 3),
+            ],
+          ),
         ),
       ),
     );

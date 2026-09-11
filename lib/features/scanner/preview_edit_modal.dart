@@ -3,19 +3,20 @@ import '../../core/digit_normalizer.dart';
 import '../../core/matching_engine.dart';
 import '../../models/bond.dart';
 import '../../models/draw.dart';
+import '../../services/wallet_service.dart';
 
 /// Bottom modal sheet shown after a single bond is scanned to allow manual verification,
-/// instant prize match checking, and saving.
+/// instant prize match checking, and duplicate-safe saving.
 class PreviewEditModal extends StatefulWidget {
   final String initialSerial;
-  final String? initialSeries;
   final MatchingEngine matchingEngine;
+  final WalletService walletService;
 
   const PreviewEditModal({
     super.key,
     required this.initialSerial,
-    this.initialSeries,
     required this.matchingEngine,
+    required this.walletService,
   });
 
   @override
@@ -24,7 +25,6 @@ class PreviewEditModal extends StatefulWidget {
 
 class _PreviewEditModalState extends State<PreviewEditModal> {
   late final TextEditingController _serialController;
-  late final TextEditingController _seriesController;
   late final TextEditingController _tagController;
 
   List<PrizeMatchResult> _instantMatches = [];
@@ -33,7 +33,6 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
   void initState() {
     super.initState();
     _serialController = TextEditingController(text: widget.initialSerial);
-    _seriesController = TextEditingController(text: widget.initialSeries ?? '');
     _tagController = TextEditingController();
 
     _runInstantCheck();
@@ -43,7 +42,6 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
   @override
   void dispose() {
     _serialController.dispose();
-    _seriesController.dispose();
     _tagController.dispose();
     super.dispose();
   }
@@ -51,10 +49,7 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
   void _runInstantCheck() {
     final serial = DigitNormalizer.normalizeSerial(_serialController.text);
     if (serial != null && serial.length == 7) {
-      final matches = widget.matchingEngine.checkSerialString(
-        serial,
-        series: _seriesController.text.trim(),
-      );
+      final matches = widget.matchingEngine.checkSerialString(serial);
       setState(() {
         _instantMatches = matches;
       });
@@ -65,11 +60,18 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
     }
   }
 
+  bool get _isAlreadyInWallet {
+    final serial = DigitNormalizer.normalizeSerial(_serialController.text);
+    if (serial == null) return false;
+    return widget.walletService.containsSerial(serial);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isWinner = _instantMatches.isNotEmpty;
-    final currentSerial = _serialController.text;
+    final currentSerial = _serialController.text.trim();
     final bengaliPreview = DigitNormalizer.toBengaliDigits(currentSerial);
+    final isAlreadySaved = _isAlreadyInWallet;
 
     return Container(
       decoration: const BoxDecoration(
@@ -106,7 +108,7 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
                 const Icon(Icons.verified, color: Color(0xFFD4AF37), size: 24),
                 const SizedBox(width: 8),
                 const Text(
-                  'Verify Scanned Bond',
+                  'Verify Bond Number',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
@@ -177,137 +179,154 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
               const SizedBox(height: 16),
             ],
 
-            // Input Fields
-            Row(
-              children: [
-                // Series input
-                SizedBox(
-                  width: 90,
-                  child: TextField(
-                    controller: _seriesController,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: 'Series',
-                      labelStyle: const TextStyle(color: Colors.white60),
-                      hintText: 'কখ',
-                      hintStyle: const TextStyle(color: Colors.white24),
-                      filled: true,
-                      fillColor: Colors.white.withOpacity(0.06),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
+            // Duplicate Warning Banner
+            if (isAlreadySaved) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD4AF37).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4)),
                 ),
-                const SizedBox(width: 12),
-                // 7-digit Serial input
-                Expanded(
-                  child: TextField(
-                    controller: _serialController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 7,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2,
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Color(0xFFD4AF37), size: 22),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'This bond number is already in your wallet. Each number can only be added once.',
+                        style: TextStyle(
+                          color: Color(0xFFFFF176),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                    decoration: InputDecoration(
-                      counterText: '',
-                      labelText: '7-Digit Serial',
-                      labelStyle: const TextStyle(color: Colors.white60),
-                      filled: true,
-                      fillColor: Colors.white.withOpacity(0.06),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // 7-Digit Serial Input (Full Width, Number-only, Large & Prominent)
+            TextField(
+              controller: _serialController,
+              keyboardType: TextInputType.number,
+              maxLength: 7,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+              ),
+              decoration: InputDecoration(
+                counterText: '',
+                labelText: '7-Digit Bond Number',
+                hintText: '0786345',
+                hintStyle: const TextStyle(color: Colors.white24, letterSpacing: 4),
+                labelStyle: const TextStyle(color: Colors.white60),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.06),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFF00FF66), width: 1.5),
+                ),
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
 
             // Bengali Numeral preview
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.04),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
                   const Text(
-                    'Bengali Digits: ',
-                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                    'বাংলা সংখ্যা: ',
+                    style: TextStyle(color: Colors.white60, fontSize: 13),
                   ),
                   Text(
-                    bengaliPreview,
+                    bengaliPreview.isNotEmpty ? bengaliPreview : '-------',
                     style: const TextStyle(
                       color: Color(0xFFD4AF37),
-                      fontSize: 13,
+                      fontSize: 15,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
                     ),
                   ),
                   const Spacer(),
                   const Text(
-                    '৳100 Prize Bond',
+                    '৳১০০ প্রাইজবন্ড',
                     style: TextStyle(color: Colors.white38, fontSize: 11),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             // Optional Tag input
             TextField(
               controller: _tagController,
               style: const TextStyle(color: Colors.white, fontSize: 14),
               decoration: InputDecoration(
-                labelText: 'Tag / Note (Optional, e.g. Gift, Family)',
+                labelText: 'Tag / Label (Optional, e.g. Gift, Personal)',
                 labelStyle: const TextStyle(color: Colors.white60),
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.06),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 22),
 
             // Confirm & Save Button
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF006A4E),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: isAlreadySaved ? Colors.white24 : const Color(0xFF006A4E),
+                foregroundColor: isAlreadySaved ? Colors.white54 : Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              onPressed: () {
-                final serial = DigitNormalizer.normalizeSerial(_serialController.text);
-                if (serial == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      backgroundColor: Colors.redAccent,
-                      content: Text('Please enter a valid 7-digit bond serial number.'),
-                    ),
-                  );
-                  return;
-                }
+              onPressed: isAlreadySaved
+                  ? null
+                  : () {
+                      final serial = DigitNormalizer.normalizeSerial(_serialController.text);
+                      if (serial == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            backgroundColor: Colors.redAccent,
+                            content: Text('Please enter a valid 7-digit bond serial number.'),
+                          ),
+                        );
+                        return;
+                      }
 
-                final confirmedBond = Bond(
-                  serialNumber: serial,
-                  seriesPrefix: _seriesController.text.trim().isNotEmpty
-                      ? _seriesController.text.trim()
-                      : null,
-                  tags: _tagController.text.trim().isNotEmpty
-                      ? [_tagController.text.trim()]
-                      : [],
-                );
+                      if (widget.walletService.containsSerial(serial)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            backgroundColor: Color(0xFFD4AF37),
+                            content: Text('This bond is already in your wallet!'),
+                          ),
+                        );
+                        return;
+                      }
 
-                Navigator.pop(context, confirmedBond);
-              },
-              child: const Text(
-                'Confirm & Save to Wallet',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      final confirmedBond = Bond(
+                        serialNumber: serial,
+                        tags: _tagController.text.trim().isNotEmpty
+                            ? [_tagController.text.trim()]
+                            : [],
+                      );
+
+                      Navigator.pop(context, confirmedBond);
+                    },
+              child: Text(
+                isAlreadySaved ? 'Already in Wallet' : 'Confirm & Save to Wallet',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ),
           ],
