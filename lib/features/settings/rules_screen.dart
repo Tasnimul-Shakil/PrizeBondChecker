@@ -69,6 +69,36 @@ class RulesScreen extends StatelessWidget {
                 '• You can submit prize claims at any branch of Bangladesh Bank, National Savings Bureau, or authorized commercial banks.\n'
                 '• Required documents: Original physical bond, NID copy, Bank account details, and the official claim form.',
           ),
+          const SizedBox(height: 24),
+          Center(
+            child: Column(
+              children: [
+                const Text(
+                  'Bangladesh Prize Bond Scanner',
+                  style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: const Text(
+                    'v1.0.2 (Build 3)',
+                    style: TextStyle(
+                      color: Color(0xFFD4AF37),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
         ],
       ),
     );
