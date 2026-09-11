@@ -42,3 +42,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 *.apk
+scripts/*.pdf
+scripts/*_text.txt
+scripts/*_raw.txt
+scripts/node_modules/

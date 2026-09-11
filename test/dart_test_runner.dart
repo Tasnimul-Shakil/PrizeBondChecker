@@ -70,19 +70,19 @@ void main() {
   print('  ✓ MatchingEngine built index with ${engine.indexedNumbersCount} unique winning numbers');
 
   // Test 5: O(1) Match Verification
-  final testBond1stPrize = Bond(serialNumber: '0782341', seriesPrefix: 'কখ');
+  final testBond1stPrize = Bond(serialNumber: '0786345', seriesPrefix: 'কখ');
   final matches1 = engine.checkBond(testBond1stPrize);
-  assert(matches1.isNotEmpty, '0782341 should have matched 1st prize');
-  assert(matches1.first.drawNumber == 119, 'Draw number mismatch');
+  assert(matches1.isNotEmpty, '0786345 should have matched 1st prize');
+  assert(matches1.first.drawNumber == 124, 'Draw number mismatch: ${matches1.first.drawNumber}');
   assert(matches1.first.tier == 1, 'Tier mismatch');
   assert(matches1.first.prizeAmount == 600000.0, 'Prize amount mismatch');
   assert(matches1.first.taxDeduction == 120000.0, '20% tax deduction mismatch');
   assert(matches1.first.netPrizeAmount == 480000.0, 'Net prize mismatch');
   assert(matches1.first.isClaimable == true, 'Claimable flag mismatch');
-  print('  ✓ O(1) 1st Prize Match: Bond ${testBond1stPrize.displayName} -> ${matches1.first.tierName} (${DigitNormalizer.formatCurrencyBDT(matches1.first.prizeAmount)})');
+  print('  ✓ O(1) 1st Prize Match: Bond ${testBond1stPrize.displayName} -> ${matches1.first.tierName} (${DigitNormalizer.formatCurrencyBDT(matches1.first.prizeAmount)}) in Draw #${matches1.first.drawNumber}');
 
   // Test 6: Series Agnostic Verification
-  final testBondDiffSeries = Bond(serialNumber: '0782341', seriesPrefix: 'GH');
+  final testBondDiffSeries = Bond(serialNumber: '0786345', seriesPrefix: 'GH');
   final matchesDiffSeries = engine.checkBond(testBondDiffSeries);
   assert(matchesDiffSeries.isNotEmpty, 'Series agnostic matching failed');
   print('  ✓ Series-Agnostic verification: Series "GH" matches 7-digit winner identically');
@@ -90,9 +90,9 @@ void main() {
   // Test 7: Batch Evaluation Summary
   print('\n3. Testing Batch Evaluation Summary...');
   final userPortfolio = [
-    Bond(serialNumber: '0782341', seriesPrefix: 'কখ'), // 1st Prize: 600,000
-    Bond(serialNumber: '0421890', seriesPrefix: 'কখ'), // 2nd Prize: 325,000
-    Bond(serialNumber: '0012489', seriesPrefix: 'কখ'), // 5th Prize: 10,000
+    Bond(serialNumber: '0786345', seriesPrefix: 'কখ'), // Draw 124 1st Prize: 600,000
+    Bond(serialNumber: '0911829', seriesPrefix: 'কখ'), // Draw 124 2nd Prize: 325,000
+    Bond(serialNumber: '0050418', seriesPrefix: 'কখ'), // Draw 124 5th Prize: 10,000
     Bond(serialNumber: '0000001'), // Non-winner
     Bond(serialNumber: '0000002'), // Non-winner
   ];
