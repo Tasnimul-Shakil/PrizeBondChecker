@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/digit_normalizer.dart';
 import '../../core/matching_engine.dart';
@@ -69,14 +70,48 @@ class _WalletScreenState extends State<WalletScreen> {
     }).toList();
   }
 
+  void _showFullImageDialog(BuildContext context, String imagePath) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Align(
+              alignment: Alignment.topRight,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: InteractiveViewer(
+                child: Image.file(
+                  File(imagePath),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showBondDetails(Bond bond, List<PrizeMatchResult> matches) {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF131D2A),
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
+        final hasImage = bond.imagePath != null && File(bond.imagePath!).existsSync();
+
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -94,6 +129,54 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                 ),
               ),
+              if (hasImage) ...[
+                GestureDetector(
+                  onTap: () => _showFullImageDialog(context, bond.imagePath!),
+                  child: Container(
+                    height: 150,
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4)),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(13),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.file(
+                            File(bond.imagePath!),
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            bottom: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.zoom_in, color: Color(0xFFFFF176), size: 14),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Tap to Enlarge Photo',
+                                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               Row(
                 children: [
                   Text(
@@ -387,13 +470,38 @@ class _WalletScreenState extends State<WalletScreen> {
                         child: ListTile(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           onTap: () => _showBondDetails(bond, matches),
-                          leading: CircleAvatar(
-                            backgroundColor: isWinner
-                                ? const Color(0xFF006A4E)
-                                : Colors.white.withOpacity(0.08),
-                            child: Icon(
-                              isWinner ? Icons.emoji_events : Icons.confirmation_number,
-                              color: isWinner ? const Color(0xFFFFF176) : const Color(0xFFD4AF37),
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: (bond.imagePath != null && File(bond.imagePath!).existsSync())
+                                  ? GestureDetector(
+                                      onTap: () => _showFullImageDialog(context, bond.imagePath!),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          Image.file(
+                                            File(bond.imagePath!),
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => _buildDefaultAvatar(isWinner),
+                                          ),
+                                          Positioned(
+                                            bottom: 2,
+                                            right: 2,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black87,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: const Icon(Icons.zoom_in, color: Colors.white70, size: 10),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : _buildDefaultAvatar(isWinner),
                             ),
                           ),
                           title: Row(
@@ -489,6 +597,18 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDefaultAvatar(bool isWinner) {
+    return CircleAvatar(
+      backgroundColor: isWinner
+          ? const Color(0xFF006A4E)
+          : Colors.white.withOpacity(0.08),
+      child: Icon(
+        isWinner ? Icons.emoji_events : Icons.confirmation_number,
+        color: isWinner ? const Color(0xFFFFF176) : const Color(0xFFD4AF37),
       ),
     );
   }

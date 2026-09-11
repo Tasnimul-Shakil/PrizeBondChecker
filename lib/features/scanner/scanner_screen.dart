@@ -211,7 +211,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
   /// Master OCR pipeline: runs Devanagari first (Bengali digits/text),
   /// then Latin (English digits/series), or combines both for best extraction.
-  Future<void> _runOcrPipeline(InputImage inputImage, {required bool isLiveStream}) async {
+  Future<void> _runOcrPipeline(InputImage inputImage, {required bool isLiveStream, String? imagePath}) async {
     String rawTextDevanagari = '';
     String rawTextLatin = '';
 
@@ -237,7 +237,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       }
 
       if (scanned.isValid && scanned.serial != null) {
-        _handleDetectedBond(scanned.serial!, scanned.series);
+        _handleDetectedBond(scanned.serial!, scanned.series, imagePath: imagePath);
       } else if (!isLiveStream) {
         // User explicitly tapped Capture or Picked from Gallery and no serial was found
         if (mounted) {
@@ -258,7 +258,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
   }
 
-  void _handleDetectedBond(String serial, String? series) {
+  void _handleDetectedBond(String serial, String? series, {String? imagePath}) {
     _lastDetectionTime = DateTime.now();
 
     // Prevent duplicate scan if bond is already in the user's wallet
@@ -291,12 +291,10 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
     if (_currentMode == ScanMode.single) {
       // Pause stream temporarily to show preview confirmation modal
-      try {
-        _cameraController?.stopImageStream();
-      } catch (_) {}
+      _stopImageStream();
       HapticFeedback.mediumImpact();
 
-      _showSinglePreviewModal(serial: serial, series: series);
+      _showSinglePreviewModal(serial: serial, series: series, imagePath: imagePath);
     } else {
       // Batch Mode: continuous rapid capture (ignore duplicates)
       if (!_batchCapturedSerials.contains(serial) && !widget.widgetWalletService.containsSerial(serial)) {
@@ -306,6 +304,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         final bond = Bond(
           serialNumber: serial,
           seriesPrefix: series,
+          imagePath: imagePath,
           batchId: 'BATCH_${DateTime.now().millisecondsSinceEpoch}',
         );
 
@@ -316,6 +315,28 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         });
       }
     }
+  }
+
+  /// Helper to extract 7-digit serial number from an image file
+  Future<String?> _extractSerialFromImage(InputImage inputImage) async {
+    try {
+      final devanagariResult = await _devanagariRecognizer.processImage(inputImage);
+      var scanned = DigitNormalizer.extractPrimaryBond(devanagariResult.text);
+      if (scanned.isValid && scanned.serial != null) {
+        return scanned.serial;
+      }
+      final latinResult = await _latinRecognizer.processImage(inputImage);
+      scanned = DigitNormalizer.extractPrimaryBond(latinResult.text);
+      if (scanned.isValid && scanned.serial != null) {
+        return scanned.serial;
+      }
+      final combined = '${devanagariResult.text}\n${latinResult.text}';
+      scanned = DigitNormalizer.extractPrimaryBond(combined);
+      if (scanned.isValid && scanned.serial != null) {
+        return scanned.serial;
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Takes a high-resolution focused photo and runs OCR via InputImage.fromFilePath
@@ -333,7 +354,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
       final photo = await _cameraController!.takePicture();
       final inputImage = InputImage.fromFilePath(photo.path);
-      await _runOcrPipeline(inputImage, isLiveStream: false);
+      await _runOcrPipeline(inputImage, isLiveStream: false, imagePath: photo.path);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -352,7 +373,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
   }
 
-  /// Lets the user pick an existing prize bond photo from Gallery / Storage
+  /// Lets the user pick single or multiple prize bond photos from Gallery / Storage
   Future<void> _pickImageFromGallery() async {
     if (_isPickingImage) return;
 
@@ -365,15 +386,14 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     await _stopImageStream();
 
     try {
-      final picked = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
+      final pickedList = await _imagePicker.pickMultiImage(
         maxWidth: 1600,
         maxHeight: 1600,
         imageQuality: 85,
       );
 
-      if (picked == null) {
-        // User cancelled gallery selection without picking an image
+      if (pickedList.isEmpty) {
+        // User cancelled gallery selection without picking any image
         if (mounted) {
           setState(() {
             _isPickingImage = false;
@@ -384,14 +404,83 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         return;
       }
 
-      final inputImage = InputImage.fromFilePath(picked.path);
-      await _runOcrPipeline(inputImage, isLiveStream: false);
+      if (pickedList.length == 1) {
+        // Single image selected: run OCR and show preview modal with photo preview
+        final file = pickedList.first;
+        final inputImage = InputImage.fromFilePath(file.path);
+        await _runOcrPipeline(inputImage, isLiveStream: false, imagePath: file.path);
+      } else {
+        // Multiple images selected: process each and add to wallet
+        int addedCount = 0;
+        int duplicateCount = 0;
+        int failedOcrCount = 0;
+        final newBonds = <Bond>[];
+
+        for (int i = 0; i < pickedList.length; i++) {
+          final file = pickedList[i];
+          final inputImage = InputImage.fromFilePath(file.path);
+          final serial = await _extractSerialFromImage(inputImage);
+
+          if (serial != null) {
+            if (widget.widgetWalletService.containsSerial(serial) ||
+                newBonds.any((b) => b.serialNumber == serial)) {
+              duplicateCount++;
+            } else {
+              newBonds.add(Bond(
+                serialNumber: serial,
+                imagePath: file.path,
+                batchId: 'MULTI_GALLERY_${DateTime.now().millisecondsSinceEpoch}',
+                tags: ['Gallery Upload'],
+              ));
+            }
+          } else {
+            failedOcrCount++;
+          }
+        }
+
+        if (newBonds.isNotEmpty) {
+          addedCount = await widget.widgetWalletService.addBatch(newBonds);
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFF006A4E),
+              duration: const Duration(seconds: 4),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Added $addedCount bonds from ${pickedList.length} photos!',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  if (duplicateCount > 0 || failedOcrCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 28),
+                      child: Text(
+                        '${duplicateCount > 0 ? "$duplicateCount duplicate(s) skipped. " : ""}${failedOcrCount > 0 ? "$failedOcrCount photo(s) had no readable number." : ""}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: Colors.red.shade800,
-            content: Text('Could not open image: $e'),
+            content: Text('Could not open images: $e'),
           ),
         );
       }
@@ -468,7 +557,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     );
   }
 
-  void _showSinglePreviewModal({required String serial, String? series}) async {
+  void _showSinglePreviewModal({required String serial, String? series, String? imagePath}) async {
     await _stopImageStream();
 
     final result = await showModalBottomSheet<Bond>(
@@ -477,6 +566,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       backgroundColor: Colors.transparent,
       builder: (ctx) => PreviewEditModal(
         initialSerial: serial,
+        imagePath: imagePath,
         matchingEngine: widget.matchingEngine,
         walletService: widget.widgetWalletService,
       ),
@@ -486,6 +576,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       final added = await widget.widgetWalletService.addBond(
         serialNumber: result.serialNumber,
         seriesPrefix: result.seriesPrefix,
+        imagePath: result.imagePath,
         tags: result.tags,
         notes: result.notes,
       );

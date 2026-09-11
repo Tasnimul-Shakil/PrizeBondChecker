@@ -65,6 +65,7 @@ class WalletService {
   Future<Bond?> addBond({
     required String serialNumber,
     String? seriesPrefix,
+    String? imagePath,
     String? batchId,
     List<String>? tags,
     String? notes,
@@ -82,6 +83,7 @@ class WalletService {
       seriesPrefix: seriesPrefix?.trim().isNotEmpty == true
           ? seriesPrefix!.trim().toUpperCase()
           : null,
+      imagePath: imagePath,
       batchId: batchId,
       tags: tags,
       notes: notes,
