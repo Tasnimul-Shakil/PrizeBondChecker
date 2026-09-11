@@ -130,7 +130,7 @@ class RulesScreen extends StatelessWidget {
                         border: Border.all(color: Colors.white12),
                       ),
                       child: const Text(
-                        'v1.0.5 (Build 6)',
+                        'v1.0.6 (Build 7)',
                         style: TextStyle(
                           color: Color(0xFFD4AF37),
                           fontSize: 12,

@@ -1,7 +1,7 @@
 name: prize_bond_checker
 description: "A mobile utility app to scan Bangladesh ৳100 prize bonds via camera OCR and match against winning draw results."
 publish_to: "none"
-version: 1.0.5+6
+version: 1.0.6+7
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
