@@ -37,15 +37,53 @@ class DocumentCropperService {
 
       bool foundDocumentRegion = false;
 
-      // 1. Text-guided document detection
+      // 1. Text-guided document detection with prize bond cluster anchoring
       if (textBlocks != null && textBlocks.isNotEmpty) {
+        // Find anchor blocks that are definitely part of the Prize Bond:
+        // (7-digit numbers, Bengali characters, or bond keywords)
+        TextBlock? anchorBlock;
+        for (final block in textBlocks) {
+          final t = block.text;
+          // Check for serial number (English or Bengali digits) or prize bond keywords
+          if (RegExp(r'[0-9০-৯]{5,7}').hasMatch(t) ||
+              t.contains('একশত') ||
+              t.contains('বাংলাদেশ') ||
+              t.contains('টাকা') ||
+              t.contains('বন্ড')) {
+            anchorBlock = block;
+            break;
+          }
+        }
+
+        // If an anchor was found, filter blocks belonging to the bond cluster
+        // (a banknote is ~1.75:1 aspect ratio, so height is roughly 0.55-0.65 of width)
+        final bondBlocks = <TextBlock>[];
+        if (anchorBlock != null) {
+          final anchorCenterY = anchorBlock.boundingBox.center.dy;
+          final anchorCenterX = anchorBlock.boundingBox.center.dx;
+
+          // Bangladesh banknote in a standard photo spans at most ~60% of image height
+          final maxVerticalDist = image.height * 0.40;
+          final maxHorizontalDist = image.width * 0.55;
+
+          for (final block in textBlocks) {
+            final box = block.boundingBox;
+            if ((box.center.dy - anchorCenterY).abs() <= maxVerticalDist &&
+                (box.center.dx - anchorCenterX).abs() <= maxHorizontalDist) {
+              bondBlocks.add(block);
+            }
+          }
+        } else {
+          bondBlocks.addAll(textBlocks);
+        }
+
         double minX = double.infinity;
         double minY = double.infinity;
         double maxX = 0;
         double maxY = 0;
 
         int validBlockCount = 0;
-        for (final block in textBlocks) {
+        for (final block in bondBlocks) {
           final box = block.boundingBox;
           if (box.width > 0 && box.height > 0) {
             validBlockCount++;
@@ -62,9 +100,10 @@ class DocumentCropperService {
 
           // Prize bonds have text spanning the entire surface (government header at top,
           // 7-digit serial numbers at top-left and bottom-right, denomination in center, signatures at bottom).
-          // We add a 15-20% margin around the text union to capture the complete banknote with borders.
-          final padX = textW * 0.15;
-          final padY = textH * 0.18;
+          // We add a modest 8-10% margin around the text union to capture the complete banknote with borders
+          // without pulling in external keyboards or desks.
+          final padX = textW * 0.08;
+          final padY = textH * 0.10;
 
           final docLeft = max(0.0, minX - padX);
           final docTop = max(0.0, minY - padY);
@@ -74,8 +113,8 @@ class DocumentCropperService {
           final docW = docRight - docLeft;
           final docH = docBottom - docTop;
 
-          // Only apply if the document region represents a substantial part of the image
-          if (docW > image.width * 0.25 && docH > image.height * 0.15) {
+          // Only apply if the document region represents a valid banknote region
+          if (docW > image.width * 0.20 && docH > image.height * 0.10) {
             cropX = docLeft.round();
             cropY = docTop.round();
             cropW = docW.round();

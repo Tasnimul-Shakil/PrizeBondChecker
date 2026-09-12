@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/digit_normalizer.dart';
@@ -17,15 +18,18 @@ enum ScanMode { single, batch }
 
 /// Real-time camera scanner with guided bounding box overlay,
 /// Google ML Kit OCR text recognition (Devanagari & Latin),
+/// Google ML Kit Document Scanner (automatic yellow contour document detection & flattening),
 /// high-resolution photo capture, gallery image upload, and digit normalization.
 class ScannerScreen extends StatefulWidget {
   final WalletService widgetWalletService;
   final MatchingEngine matchingEngine;
+  final bool autoLaunchDocumentScanner;
 
   const ScannerScreen({
     super.key,
     required WalletService walletService,
     required this.matchingEngine,
+    this.autoLaunchDocumentScanner = true,
   }) : widgetWalletService = walletService;
 
   @override
@@ -67,6 +71,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     _devanagariRecognizer = TextRecognizer(script: TextRecognitionScript.devanagiri);
     _latinRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
     _initializeCamera();
+
+    // Auto-launch Google ML Kit Document Scanner (exact UI with yellow contour detection)
+    if (widget.autoLaunchDocumentScanner) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startDocumentScanner();
+      });
+    }
   }
 
   @override
@@ -377,9 +388,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     return null;
   }
 
-  /// Takes a high-resolution focused photo and runs OCR via InputImage.fromFilePath
-  Future<void> _captureAndScanPhoto() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+  /// Starts Google ML Kit Document Scanner flow (exact UI with yellow contour detection,
+  /// automatic boundary cropping, filters, and perspective correction).
+  Future<void> _startDocumentScanner() async {
     if (_isAnalyzingImage || _isPickingImage) return;
 
     try {
@@ -387,6 +398,107 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         _isAnalyzingImage = true;
       });
 
+      await _stopImageStream();
+
+      final docScanner = DocumentScanner(
+        options: DocumentScannerOptions(
+          documentFormat: DocumentFormat.jpeg,
+          mode: ScannerMode.full,
+          isGalleryImport: true,
+          pageLimit: _currentMode == ScanMode.batch ? 25 : 1,
+        ),
+      );
+
+      final result = await docScanner.scanDocument();
+      await docScanner.close();
+
+      if (result.images.isEmpty) {
+        // User closed or cancelled without scanning
+        return;
+      }
+
+      if (_currentMode == ScanMode.single) {
+        final docPath = result.images.first;
+        final inputImage = InputImage.fromFilePath(docPath);
+        await _runOcrPipeline(inputImage, isLiveStream: false, imagePath: docPath);
+      } else {
+        // Batch Mode: process multiple scanned documents sequentially
+        int addedCount = 0;
+        int duplicateCount = 0;
+        int failedOcrCount = 0;
+        final newBonds = <Bond>[];
+
+        for (final docPath in result.images) {
+          final inputImage = InputImage.fromFilePath(docPath);
+          final devanagariResult = await _devanagariRecognizer.processImage(inputImage);
+          var scanned = DigitNormalizer.extractPrimaryBond(devanagariResult.text);
+
+          if (!scanned.isValid) {
+            final latinResult = await _latinRecognizer.processImage(inputImage);
+            scanned = DigitNormalizer.extractPrimaryBond(latinResult.text);
+            if (!scanned.isValid) {
+              scanned = DigitNormalizer.extractPrimaryBond('${devanagariResult.text}\n${latinResult.text}');
+            }
+          }
+
+          if (scanned.isValid && scanned.serial != null) {
+            final serial = scanned.serial!;
+            if (widget.widgetWalletService.containsSerial(serial) ||
+                newBonds.any((b) => b.serialNumber == serial)) {
+              duplicateCount++;
+            } else {
+              newBonds.add(Bond(
+                serialNumber: serial,
+                seriesPrefix: scanned.series,
+                imagePath: docPath,
+                batchId: 'BATCH_DOC_${DateTime.now().millisecondsSinceEpoch}',
+                tags: ['Document Scanner'],
+              ));
+            }
+          } else {
+            failedOcrCount++;
+          }
+        }
+
+        if (newBonds.isNotEmpty) {
+          addedCount = await widget.widgetWalletService.addBatch(newBonds);
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFF006A4E),
+              duration: const Duration(seconds: 4),
+              content: Text(
+                'Added $addedCount bonds from document scan!${duplicateCount > 0 ? " ($duplicateCount duplicates skipped)" : ""}',
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Document scanner exception: $e');
+      await _captureAndScanPhotoFallback();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAnalyzingImage = false;
+        });
+        _startImageStream();
+      }
+    }
+  }
+
+  /// Takes a high-resolution focused photo and runs OCR via InputImage.fromFilePath
+  Future<void> _captureAndScanPhoto() async {
+    await _startDocumentScanner();
+  }
+
+  /// Fallback photo capture if native Document Scanner is unavailable
+  Future<void> _captureAndScanPhotoFallback() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+
+    try {
       HapticFeedback.mediumImpact();
       await _stopImageStream();
 
@@ -401,12 +513,6 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             content: Text('Capture error: $e'),
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAnalyzingImage = false;
-        });
       }
     }
   }
@@ -761,8 +867,38 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                 },
               ),
             )
-          else
+          else ...[
+            // 4b. Prominent Smart Document Scanner button
+            Positioned(
+              bottom: 112,
+              left: 24,
+              right: 24,
+              child: Center(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF006A4E),
+                    foregroundColor: Colors.white,
+                    elevation: 10,
+                    shadowColor: const Color(0xFF006A4E).withOpacity(0.6),
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      side: const BorderSide(color: Color(0xFFD4AF37), width: 1.8),
+                    ),
+                  ),
+                  onPressed: _startDocumentScanner,
+                  icon: const Icon(Icons.document_scanner, color: Color(0xFFFFF176), size: 22),
+                  label: Text(
+                    _locale.isBangla
+                        ? 'স্মার্ট ডকুমেন্ট স্ক্যানার (হলুদ বর্ডার শনাক্তকরণ)'
+                        : 'Document Scanner (Yellow Contour)',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, letterSpacing: 0.3),
+                  ),
+                ),
+              ),
+            ),
             _buildSingleModeBottomBar(),
+          ],
 
           // 5. Analyzing Spinner Overlay
           if (_isAnalyzingImage)
@@ -1091,9 +1227,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               onTap: _pickImageFromGallery,
             ),
 
-            // 2. Large High-Res Capture Shutter Button
+            // 2. Document Scanner Shutter Button
             GestureDetector(
-              onTap: _captureAndScanPhoto,
+              onTap: _startDocumentScanner,
               child: Container(
                 width: 68,
                 height: 68,
@@ -1106,10 +1242,14 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                 child: Container(
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white,
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF006A4E), Color(0xFF0F9D58)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                   ),
                   child: const Center(
-                    child: Icon(Icons.camera_alt, color: Color(0xFF006A4E), size: 30),
+                    child: Icon(Icons.document_scanner, color: Color(0xFFFFF176), size: 30),
                   ),
                 ),
               ),
