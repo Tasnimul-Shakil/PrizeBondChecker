@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/digit_normalizer.dart';
 import '../../core/matching_engine.dart';
 import '../../models/bond.dart';
+import '../../services/document_cropper_service.dart';
 import '../../services/locale_service.dart';
 import '../../services/wallet_service.dart';
 import 'batch_scanner_tray.dart';
@@ -222,11 +223,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       final devanagariResult = await _devanagariRecognizer.processImage(inputImage);
       rawTextDevanagari = devanagariResult.text;
       var scanned = DigitNormalizer.extractPrimaryBond(rawTextDevanagari);
+      final allBlocks = <TextBlock>[...devanagariResult.blocks];
 
       // 2. If no valid 7-digit serial, also try Latin model
       if (!scanned.isValid) {
         final latinResult = await _latinRecognizer.processImage(inputImage);
         rawTextLatin = latinResult.text;
+        allBlocks.addAll(latinResult.blocks);
         final latinScanned = DigitNormalizer.extractPrimaryBond(rawTextLatin);
 
         if (latinScanned.isValid) {
@@ -238,8 +241,23 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         }
       }
 
+      // 3. Detect and isolate the full prize bond document if from an image file
+      String? croppedDocumentPath = imagePath;
+      if (imagePath != null) {
+        try {
+          croppedDocumentPath = await DocumentCropperService().cropFullBondDocument(
+            originalImagePath: imagePath,
+            textBlocks: allBlocks,
+            viewfinderWidthFraction: 0.92,
+            viewfinderHeightFraction: 0.52,
+          );
+        } catch (cropErr) {
+          debugPrint('Document cropping error: $cropErr');
+        }
+      }
+
       if (scanned.isValid && scanned.serial != null) {
-        _handleDetectedBond(scanned.serial!, scanned.series, imagePath: imagePath);
+        _handleDetectedBond(scanned.serial!, scanned.series, imagePath: croppedDocumentPath);
       } else if (!isLiveStream) {
         // User explicitly tapped Capture or Picked from Gallery and no serial was found
         if (mounted) {
@@ -260,7 +278,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
   }
 
-  void _handleDetectedBond(String serial, String? series, {String? imagePath}) {
+  void _handleDetectedBond(String serial, String? series, {String? imagePath}) async {
     _lastDetectionTime = DateTime.now();
 
     // Prevent duplicate scan if bond is already in the user's wallet
@@ -296,6 +314,24 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       _stopImageStream();
       HapticFeedback.mediumImpact();
 
+      // If detected via live camera stream and no photo captured yet,
+      // snap a high-res photo to isolate and attach the full prize bond document
+      if (imagePath == null && _cameraController != null && _cameraController!.value.isInitialized) {
+        try {
+          final photo = await _cameraController!.takePicture();
+          final photoInput = InputImage.fromFilePath(photo.path);
+          final devanagari = await _devanagariRecognizer.processImage(photoInput);
+          final latin = await _latinRecognizer.processImage(photoInput);
+          imagePath = await DocumentCropperService().cropFullBondDocument(
+            originalImagePath: photo.path,
+            textBlocks: [...devanagari.blocks, ...latin.blocks],
+            viewfinderWidthFraction: 0.92,
+            viewfinderHeightFraction: 0.52,
+          );
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
       _showSinglePreviewModal(serial: serial, series: series, imagePath: imagePath);
     } else {
       // Batch Mode: continuous rapid capture (ignore duplicates)
@@ -421,16 +457,37 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         for (int i = 0; i < pickedList.length; i++) {
           final file = pickedList[i];
           final inputImage = InputImage.fromFilePath(file.path);
-          final serial = await _extractSerialFromImage(inputImage);
+          final devanagariResult = await _devanagariRecognizer.processImage(inputImage);
+          var scanned = DigitNormalizer.extractPrimaryBond(devanagariResult.text);
+          final allBlocks = <TextBlock>[...devanagariResult.blocks];
 
-          if (serial != null) {
+          if (!scanned.isValid) {
+            final latinResult = await _latinRecognizer.processImage(inputImage);
+            allBlocks.addAll(latinResult.blocks);
+            scanned = DigitNormalizer.extractPrimaryBond(latinResult.text);
+            if (!scanned.isValid) {
+              scanned = DigitNormalizer.extractPrimaryBond('${devanagariResult.text}\n${latinResult.text}');
+            }
+          }
+
+          if (scanned.isValid && scanned.serial != null) {
+            final serial = scanned.serial!;
             if (widget.widgetWalletService.containsSerial(serial) ||
                 newBonds.any((b) => b.serialNumber == serial)) {
               duplicateCount++;
             } else {
+              String finalDocPath = file.path;
+              try {
+                finalDocPath = await DocumentCropperService().cropFullBondDocument(
+                  originalImagePath: file.path,
+                  textBlocks: allBlocks,
+                );
+              } catch (_) {}
+
               newBonds.add(Bond(
                 serialNumber: serial,
-                imagePath: file.path,
+                seriesPrefix: scanned.series,
+                imagePath: finalDocPath,
                 batchId: 'MULTI_GALLERY_${DateTime.now().millisecondsSinceEpoch}',
                 tags: ['Gallery Upload'],
               ));
@@ -776,9 +833,10 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   Widget _buildGuidedBoundingBoxOverlay() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final boxWidth = constraints.maxWidth * 0.88;
-        const boxHeight = 115.0;
-        final topOffset = constraints.maxHeight * 0.28;
+        // Bangladesh ৳100 Prize Bond banknote has ~1.75:1 aspect ratio
+        final boxWidth = constraints.maxWidth * 0.90;
+        final boxHeight = boxWidth / 1.75;
+        final topOffset = (constraints.maxHeight - boxHeight) * 0.32;
 
         return Stack(
           children: [
@@ -840,23 +898,41 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     _buildCornerAccent(bottom: 0, left: 0),
                     _buildCornerAccent(bottom: 0, right: 0),
                     Center(
-                      child: Text(
-                        _lastDetectedSerial != null
-                            ? (_locale.isBangla
-                                ? 'শনাক্ত হয়েছে: ${DigitNormalizer.toBengaliDigits(_lastDetectedSerial!)}'
-                                : 'Detected: $_lastDetectedSerial')
-                            : (_locale.isBangla
-                                ? 'এখানে বন্ডের ৭ ডিজিট নম্বরটি রাখুন\n(যেমন: ০১২৮৭৪৪)'
-                                : 'Align Serial Number Here\n(e.g. 0128744)'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: _lastDetectedSerial != null
-                              ? const Color(0xFF00FF66)
-                              : Colors.white.withOpacity(0.9),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          shadows: const [
-                            Shadow(blurRadius: 4, color: Colors.black),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _lastDetectedSerial != null
+                                  ? Icons.check_circle_outline
+                                  : Icons.document_scanner,
+                              color: _lastDetectedSerial != null
+                                  ? const Color(0xFF00FF66)
+                                  : const Color(0xFFD4AF37).withOpacity(0.85),
+                              size: 32,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _lastDetectedSerial != null
+                                  ? (_locale.isBangla
+                                      ? 'বন্ড শনাক্ত হয়েছে: ${DigitNormalizer.toBengaliDigits(_lastDetectedSerial!)}'
+                                      : 'Bond Detected: $_lastDetectedSerial')
+                                  : (_locale.isBangla
+                                      ? 'সম্পূর্ণ প্রাইজ বন্ডটি ফ্রেমের ভেতর রাখুন\n(ডকুমেন্ট ও নম্বর স্বয়ংক্রিয়ভাবে ক্রপ হবে)'
+                                      : 'Align Full Prize Bond Document\n(Auto-detects document & serial)'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _lastDetectedSerial != null
+                                    ? const Color(0xFF00FF66)
+                                    : Colors.white.withOpacity(0.9),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                shadows: const [
+                                  Shadow(blurRadius: 4, color: Colors.black),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),

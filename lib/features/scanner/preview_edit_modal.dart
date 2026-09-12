@@ -211,47 +211,50 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
               const SizedBox(height: 16),
             ],
 
-            // Photo Preview of Scanned/Uploaded Bond
+            // Full Prize Bond Document Preview
             if (widget.imagePath != null && File(widget.imagePath!).existsSync()) ...[
-              Container(
-                height: 140,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4)),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(13),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.file(
-                        File(widget.imagePath!),
-                        fit: BoxFit.cover,
-                      ),
-                      Positioned(
-                        bottom: 6,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.photo_camera, size: 12, color: Color(0xFFFFF176)),
-                              SizedBox(width: 4),
-                              Text(
-                                'Uploaded Bond Photo',
-                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                              ),
-                            ],
+              AspectRatio(
+                aspectRatio: 1.75, // Bangladesh banknote aspect ratio
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.5), width: 1.5),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.file(
+                          File(widget.imagePath!),
+                          fit: BoxFit.contain,
+                        ),
+                        Positioned(
+                          bottom: 6,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.black87,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.document_scanner, size: 12, color: Color(0xFFFFF176)),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Prize Bond Document',
+                                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

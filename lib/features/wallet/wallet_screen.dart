@@ -131,46 +131,49 @@ class _WalletScreenState extends State<WalletScreen> {
               if (hasImage) ...[
                 GestureDetector(
                   onTap: () => _showFullImageDialog(context, bond.imagePath!),
-                  child: Container(
-                    height: 150,
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4)),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(13),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.file(
-                            File(bond.imagePath!),
-                            fit: BoxFit.cover,
-                          ),
-                          Positioned(
-                            bottom: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.black87,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.zoom_in, color: Colors.white, size: 14),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _locale.t('tap_to_view_photo'),
-                                    style: const TextStyle(color: Colors.white, fontSize: 11),
-                                  ),
-                                ],
+                  child: AspectRatio(
+                    aspectRatio: 1.75, // Bangladesh banknote aspect ratio
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4)),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(13),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.file(
+                              File(bond.imagePath!),
+                              fit: BoxFit.contain,
+                            ),
+                            Positioned(
+                              bottom: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black87,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _locale.t('tap_to_view_photo'),
+                                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -494,23 +497,31 @@ class _WalletScreenState extends State<WalletScreen> {
                               leading: hasImage
                                   ? GestureDetector(
                                       onTap: () => _showFullImageDialog(context, bond.imagePath!),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Stack(
-                                          alignment: Alignment.bottomRight,
-                                          children: [
-                                            Image.file(
-                                              File(bond.imagePath!),
-                                              width: 48,
-                                              height: 48,
-                                              fit: BoxFit.cover,
-                                            ),
-                                            Container(
-                                              color: Colors.black54,
-                                              padding: const EdgeInsets.all(2),
-                                              child: const Icon(Icons.zoom_in, color: Colors.white, size: 10),
-                                            ),
-                                          ],
+                                      child: Container(
+                                        width: 56,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.5)),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(5),
+                                          child: Stack(
+                                            alignment: Alignment.bottomRight,
+                                            children: [
+                                              Image.file(
+                                                File(bond.imagePath!),
+                                                width: 56,
+                                                height: 36,
+                                                fit: BoxFit.cover,
+                                              ),
+                                              Container(
+                                                color: Colors.black54,
+                                                padding: const EdgeInsets.all(1.5),
+                                                child: const Icon(Icons.zoom_in, color: Colors.white, size: 10),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     )
