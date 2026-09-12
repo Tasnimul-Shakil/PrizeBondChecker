@@ -179,4 +179,22 @@ class DocumentCropperService {
       return originalImagePath;
     }
   }
+
+  /// Rotates an image file by [angle] degrees (e.g. 90, 180, 270) and saves back
+  Future<String> rotateImageFile(String imagePath, int angle) async {
+    try {
+      final file = File(imagePath);
+      if (!await file.exists()) return imagePath;
+      final bytes = await file.readAsBytes();
+      final image = img.decodeImage(bytes);
+      if (image == null) return imagePath;
+
+      final rotated = img.copyRotate(image, angle: angle);
+      await file.writeAsBytes(img.encodeJpg(rotated, quality: 90));
+      return imagePath;
+    } catch (e) {
+      debugPrint('rotateImageFile error: $e');
+      return imagePath;
+    }
+  }
 }

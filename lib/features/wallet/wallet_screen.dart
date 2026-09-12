@@ -4,6 +4,7 @@ import '../../core/digit_normalizer.dart';
 import '../../core/matching_engine.dart';
 import '../../models/bond.dart';
 import '../../models/draw.dart';
+import '../../services/document_cropper_service.dart';
 import '../../services/locale_service.dart';
 import '../../services/wallet_service.dart';
 import 'manual_add_modal.dart';
@@ -72,31 +73,88 @@ class _WalletScreenState extends State<WalletScreen> {
   void _showFullImageDialog(BuildContext context, String imagePath) {
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Align(
-              alignment: Alignment.topRight,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-            ),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: InteractiveViewer(
-                child: Image.file(
-                  File(imagePath),
-                  fit: BoxFit.contain,
+      builder: (ctx) {
+        String currentPath = imagePath;
+        int imgKey = 0;
+
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return Dialog(
+              backgroundColor: const Color(0xFF131D2A),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Top bar with Rotate and Close
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFFFF176),
+                            backgroundColor: Colors.white.withOpacity(0.08),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.rotate_right, size: 18),
+                          label: Text(_locale.isBangla ? 'ঘোরান' : 'Rotate'),
+                          onPressed: () async {
+                            final rotated = await DocumentCropperService().rotateImageFile(currentPath, 90);
+                            PaintingBinding.instance.imageCache.clear();
+                            PaintingBinding.instance.imageCache.clearLiveImages();
+                            setDialogState(() {
+                              currentPath = rotated;
+                              imgKey++;
+                            });
+                            setState(() {});
+                          },
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white, size: 26),
+                          onPressed: () => Navigator.pop(dialogCtx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Uncropped Full Document with InteractiveViewer
+                    Container(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(dialogCtx).size.height * 0.65,
+                      ),
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: InteractiveViewer(
+                        minScale: 0.8,
+                        maxScale: 4.0,
+                        child: Image.file(
+                          File(currentPath),
+                          key: ValueKey('full_dialog_img_$imgKey'),
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _locale.isBangla
+                          ? 'জুম করতে পিঞ্চ করুন • প্রয়োজন হলে ঘোরান'
+                          : 'Pinch to zoom • Tap Rotate if needed',
+                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 

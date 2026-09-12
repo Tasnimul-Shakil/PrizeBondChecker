@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -252,9 +253,44 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         }
       }
 
-      // 3. Detect and isolate the full prize bond document if from an image file
+      // 3. Auto-Orientation / Inverted Rotation Check
+      // If the image was captured upside-down (common when photographing documents flat),
+      // or if OCR didn't find the serial because the note is inverted, rotate 180°
+      if (imagePath != null && File(imagePath).existsSync()) {
+        bool shouldTryRotate = false;
+
+        // Check if Bengali header appears in the bottom half of the image
+        for (final block in allBlocks) {
+          final t = block.text;
+          if (t.contains('গণপ্রজাতন্ত্রী') || t.contains('বাংলাদেশ') || t.contains('একশত')) {
+            if (block.boundingBox.top > (inputImage.metadata?.size.height ?? 800) * 0.45) {
+              shouldTryRotate = true;
+              break;
+            }
+          }
+        }
+
+        if (!scanned.isValid || shouldTryRotate) {
+          await DocumentCropperService().rotateImageFile(imagePath, 180);
+          final rotatedInput = InputImage.fromFilePath(imagePath);
+          final rotDevResult = await _devanagariRecognizer.processImage(rotatedInput);
+          final rotScanned = DigitNormalizer.extractPrimaryBond(rotDevResult.text);
+
+          if (rotScanned.isValid || (shouldTryRotate && rotDevResult.text.isNotEmpty)) {
+            scanned = rotScanned;
+            rawTextDevanagari = rotDevResult.text;
+            allBlocks.clear();
+            allBlocks.addAll(rotDevResult.blocks);
+          } else {
+            // Revert back if 180° rotation didn't help
+            await DocumentCropperService().rotateImageFile(imagePath, 180);
+          }
+        }
+      }
+
+      // 4. Crop full prize bond document if from an uncropped camera/gallery image
       String? croppedDocumentPath = imagePath;
-      if (imagePath != null) {
+      if (imagePath != null && !imagePath.contains('document_scanner')) {
         try {
           croppedDocumentPath = await DocumentCropperService().cropFullBondDocument(
             originalImagePath: imagePath,
@@ -476,9 +512,11 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
           );
         }
       }
+    } on PlatformException catch (pe) {
+      // User cancelled or discarded scan in the Document Scanner UI
+      debugPrint('Document scanner cancelled by user: ${pe.message}');
     } catch (e) {
-      debugPrint('Document scanner exception: $e');
-      await _captureAndScanPhotoFallback();
+      debugPrint('Document scanner error: $e');
     } finally {
       if (mounted) {
         setState(() {

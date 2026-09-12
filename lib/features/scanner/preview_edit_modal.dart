@@ -4,6 +4,7 @@ import '../../core/digit_normalizer.dart';
 import '../../core/matching_engine.dart';
 import '../../models/bond.dart';
 import '../../models/draw.dart';
+import '../../services/document_cropper_service.dart';
 import '../../services/wallet_service.dart';
 
 /// Bottom modal sheet shown after a single bond is scanned to allow manual verification,
@@ -29,17 +30,31 @@ class PreviewEditModal extends StatefulWidget {
 class _PreviewEditModalState extends State<PreviewEditModal> {
   late final TextEditingController _serialController;
   late final TextEditingController _tagController;
+  String? _currentImagePath;
+  int _imageKeyIndex = 0;
 
   List<PrizeMatchResult> _instantMatches = [];
 
   @override
   void initState() {
     super.initState();
+    _currentImagePath = widget.imagePath;
     _serialController = TextEditingController(text: widget.initialSerial);
     _tagController = TextEditingController();
 
     _runInstantCheck();
     _serialController.addListener(_runInstantCheck);
+  }
+
+  Future<void> _rotateImage() async {
+    if (_currentImagePath == null) return;
+    final rotated = await DocumentCropperService().rotateImageFile(_currentImagePath!, 90);
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    setState(() {
+      _currentImagePath = rotated;
+      _imageKeyIndex++;
+    });
   }
 
   @override
@@ -211,51 +226,81 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
               const SizedBox(height: 16),
             ],
 
-            // Full Prize Bond Document Preview
-            if (widget.imagePath != null && File(widget.imagePath!).existsSync()) ...[
-              AspectRatio(
-                aspectRatio: 1.75, // Bangladesh banknote aspect ratio
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.5), width: 1.5),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(13),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.file(
-                          File(widget.imagePath!),
+            // Full Prize Bond Document Preview with Rotate & Zoom
+            if (_currentImagePath != null && File(_currentImagePath!).existsSync()) ...[
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 220),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.5), width: 1.5),
+                ),
+                padding: const EdgeInsets.all(6),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    InteractiveViewer(
+                      minScale: 0.8,
+                      maxScale: 3.5,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        child: Image.file(
+                          File(_currentImagePath!),
+                          key: ValueKey('preview_img_$_imageKeyIndex'),
                           fit: BoxFit.contain,
                         ),
-                        Positioned(
-                          bottom: 6,
-                          right: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: Colors.black87,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
+                      ),
+                    ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Material(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(16),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: _rotateImage,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.document_scanner, size: 12, color: Color(0xFFFFF176)),
+                                Icon(Icons.rotate_right, size: 14, color: Color(0xFFFFF176)),
                                 SizedBox(width: 4),
                                 Text(
-                                  'Prize Bond Document',
-                                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                  'Rotate',
+                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                    Positioned(
+                      bottom: 4,
+                      left: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.document_scanner, size: 12, color: Color(0xFFFFF176)),
+                            SizedBox(width: 4),
+                            Text(
+                              'Full Document',
+                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 14),
@@ -370,7 +415,7 @@ class _PreviewEditModalState extends State<PreviewEditModal> {
 
                       final confirmedBond = Bond(
                         serialNumber: serial,
-                        imagePath: widget.imagePath,
+                        imagePath: _currentImagePath,
                         tags: _tagController.text.trim().isNotEmpty
                             ? [_tagController.text.trim()]
                             : [],
