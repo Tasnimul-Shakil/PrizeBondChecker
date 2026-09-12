@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/digit_normalizer.dart';
@@ -17,20 +16,17 @@ import 'preview_edit_modal.dart';
 
 enum ScanMode { single, batch }
 
-/// Real-time camera scanner with guided bounding box overlay,
+/// Real-time camera scanner with guided document bounding box overlay,
 /// Google ML Kit OCR text recognition (Devanagari & Latin),
-/// Google ML Kit Document Scanner (automatic yellow contour document detection & flattening),
 /// high-resolution photo capture, gallery image upload, and digit normalization.
 class ScannerScreen extends StatefulWidget {
   final WalletService widgetWalletService;
   final MatchingEngine matchingEngine;
-  final bool autoLaunchDocumentScanner;
 
   const ScannerScreen({
     super.key,
     required WalletService walletService,
     required this.matchingEngine,
-    this.autoLaunchDocumentScanner = true,
   }) : widgetWalletService = walletService;
 
   @override
@@ -72,13 +68,6 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     _devanagariRecognizer = TextRecognizer(script: TextRecognitionScript.devanagiri);
     _latinRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
     _initializeCamera();
-
-    // Auto-launch Google ML Kit Document Scanner (exact UI with yellow contour detection)
-    if (widget.autoLaunchDocumentScanner) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _startDocumentScanner();
-      });
-    }
   }
 
   @override
@@ -424,9 +413,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     return null;
   }
 
-  /// Starts Google ML Kit Document Scanner flow (exact UI with yellow contour detection,
-  /// automatic boundary cropping, filters, and perspective correction).
-  Future<void> _startDocumentScanner() async {
+  /// High-resolution in-camera document capture snapshot and OCR pipeline.
+  Future<void> _captureAndScanPhoto() async {
     if (_isAnalyzingImage || _isPickingImage) return;
 
     try {
@@ -434,109 +422,6 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         _isAnalyzingImage = true;
       });
 
-      await _stopImageStream();
-
-      final docScanner = DocumentScanner(
-        options: DocumentScannerOptions(
-          documentFormat: DocumentFormat.jpeg,
-          mode: ScannerMode.full,
-          isGalleryImport: true,
-          pageLimit: _currentMode == ScanMode.batch ? 25 : 1,
-        ),
-      );
-
-      final result = await docScanner.scanDocument();
-      await docScanner.close();
-
-      if (result.images.isEmpty) {
-        // User closed or cancelled without scanning
-        return;
-      }
-
-      if (_currentMode == ScanMode.single) {
-        final docPath = result.images.first;
-        final inputImage = InputImage.fromFilePath(docPath);
-        await _runOcrPipeline(inputImage, isLiveStream: false, imagePath: docPath);
-      } else {
-        // Batch Mode: process multiple scanned documents sequentially
-        int addedCount = 0;
-        int duplicateCount = 0;
-        int failedOcrCount = 0;
-        final newBonds = <Bond>[];
-
-        for (final docPath in result.images) {
-          final inputImage = InputImage.fromFilePath(docPath);
-          final devanagariResult = await _devanagariRecognizer.processImage(inputImage);
-          var scanned = DigitNormalizer.extractPrimaryBond(devanagariResult.text);
-
-          if (!scanned.isValid) {
-            final latinResult = await _latinRecognizer.processImage(inputImage);
-            scanned = DigitNormalizer.extractPrimaryBond(latinResult.text);
-            if (!scanned.isValid) {
-              scanned = DigitNormalizer.extractPrimaryBond('${devanagariResult.text}\n${latinResult.text}');
-            }
-          }
-
-          if (scanned.isValid && scanned.serial != null) {
-            final serial = scanned.serial!;
-            if (widget.widgetWalletService.containsSerial(serial) ||
-                newBonds.any((b) => b.serialNumber == serial)) {
-              duplicateCount++;
-            } else {
-              newBonds.add(Bond(
-                serialNumber: serial,
-                seriesPrefix: scanned.series,
-                imagePath: docPath,
-                batchId: 'BATCH_DOC_${DateTime.now().millisecondsSinceEpoch}',
-                tags: ['Document Scanner'],
-              ));
-            }
-          } else {
-            failedOcrCount++;
-          }
-        }
-
-        if (newBonds.isNotEmpty) {
-          addedCount = await widget.widgetWalletService.addBatch(newBonds);
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: const Color(0xFF006A4E),
-              duration: const Duration(seconds: 4),
-              content: Text(
-                'Added $addedCount bonds from document scan!${duplicateCount > 0 ? " ($duplicateCount duplicates skipped)" : ""}',
-              ),
-            ),
-          );
-        }
-      }
-    } on PlatformException catch (pe) {
-      // User cancelled or discarded scan in the Document Scanner UI
-      debugPrint('Document scanner cancelled by user: ${pe.message}');
-    } catch (e) {
-      debugPrint('Document scanner error: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAnalyzingImage = false;
-        });
-        _startImageStream();
-      }
-    }
-  }
-
-  /// Takes a high-resolution focused photo and runs OCR via InputImage.fromFilePath
-  Future<void> _captureAndScanPhoto() async {
-    await _startDocumentScanner();
-  }
-
-  /// Fallback photo capture if native Document Scanner is unavailable
-  Future<void> _captureAndScanPhotoFallback() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
-
-    try {
       HapticFeedback.mediumImpact();
       await _stopImageStream();
 
@@ -551,6 +436,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             content: Text('Capture error: $e'),
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAnalyzingImage = false;
+        });
+        _startImageStream();
       }
     }
   }
@@ -905,38 +797,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                 },
               ),
             )
-          else ...[
-            // 4b. Prominent Smart Document Scanner button
-            Positioned(
-              bottom: 112,
-              left: 24,
-              right: 24,
-              child: Center(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF006A4E),
-                    foregroundColor: Colors.white,
-                    elevation: 10,
-                    shadowColor: const Color(0xFF006A4E).withOpacity(0.6),
-                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                      side: const BorderSide(color: Color(0xFFD4AF37), width: 1.8),
-                    ),
-                  ),
-                  onPressed: _startDocumentScanner,
-                  icon: const Icon(Icons.document_scanner, color: Color(0xFFFFF176), size: 22),
-                  label: Text(
-                    _locale.isBangla
-                        ? 'স্মার্ট ডকুমেন্ট স্ক্যানার (হলুদ বর্ডার শনাক্তকরণ)'
-                        : 'Document Scanner (Yellow Contour)',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, letterSpacing: 0.3),
-                  ),
-                ),
-              ),
-            ),
+          else
             _buildSingleModeBottomBar(),
-          ],
 
           // 5. Analyzing Spinner Overlay
           if (_isAnalyzingImage)
@@ -1011,6 +873,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         final boxWidth = constraints.maxWidth * 0.90;
         final boxHeight = boxWidth / 1.75;
         final topOffset = (constraints.maxHeight - boxHeight) * 0.32;
+        final isDetected = _lastDetectedSerial != null;
 
         return Stack(
           children: [
@@ -1044,7 +907,55 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               ),
             ),
 
-            // Golden Bounding Box Frame
+            // Document Scan Info Header Badge (in-camera document scanner info)
+            Positioned(
+              top: topOffset - 40,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDetected ? const Color(0xFF00FF66) : const Color(0xFFD4AF37),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (isDetected ? const Color(0xFF00FF66) : const Color(0xFFD4AF37))
+                            .withOpacity(0.3),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isDetected ? Icons.verified : Icons.document_scanner,
+                        size: 15,
+                        color: isDetected ? const Color(0xFF00FF66) : const Color(0xFFFFF176),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _locale.isBangla
+                            ? 'ডকুমেন্ট স্ক্যানার: ১০০ টাকা প্রাইজ বন্ড'
+                            : 'Document Scanner: ৳100 Prize Bond',
+                        style: TextStyle(
+                          color: isDetected ? const Color(0xFF00FF66) : Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Golden / Green Bounding Box Frame
             Positioned(
               top: topOffset,
               left: (constraints.maxWidth - boxWidth) / 2,
@@ -1054,12 +965,12 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: const Color(0xFFD4AF37),
+                    color: isDetected ? const Color(0xFF00FF66) : const Color(0xFFD4AF37),
                     width: 2.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFD4AF37).withOpacity(0.3),
+                      color: (isDetected ? const Color(0xFF00FF66) : const Color(0xFFD4AF37)).withOpacity(0.3),
                       blurRadius: 12,
                       spreadRadius: 2,
                     ),
@@ -1067,10 +978,10 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                 ),
                 child: Stack(
                   children: [
-                    _buildCornerAccent(top: 0, left: 0),
-                    _buildCornerAccent(top: 0, right: 0),
-                    _buildCornerAccent(bottom: 0, left: 0),
-                    _buildCornerAccent(bottom: 0, right: 0),
+                    _buildCornerAccent(top: 0, left: 0, isGreen: isDetected),
+                    _buildCornerAccent(top: 0, right: 0, isGreen: isDetected),
+                    _buildCornerAccent(bottom: 0, left: 0, isGreen: isDetected),
+                    _buildCornerAccent(bottom: 0, right: 0, isGreen: isDetected),
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1078,17 +989,15 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              _lastDetectedSerial != null
-                                  ? Icons.check_circle_outline
-                                  : Icons.document_scanner,
-                              color: _lastDetectedSerial != null
+                              isDetected ? Icons.check_circle_outline : Icons.document_scanner,
+                              color: isDetected
                                   ? const Color(0xFF00FF66)
                                   : const Color(0xFFD4AF37).withOpacity(0.85),
                               size: 32,
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              _lastDetectedSerial != null
+                              isDetected
                                   ? (_locale.isBangla
                                       ? 'বন্ড শনাক্ত হয়েছে: ${DigitNormalizer.toBengaliDigits(_lastDetectedSerial!)}'
                                       : 'Bond Detected: $_lastDetectedSerial')
@@ -1097,7 +1006,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                                       : 'Align Full Prize Bond Document\n(Auto-detects document & serial)'),
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: _lastDetectedSerial != null
+                                color: isDetected
                                     ? const Color(0xFF00FF66)
                                     : Colors.white.withOpacity(0.9),
                                 fontSize: 13,
@@ -1143,6 +1052,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     double? bottom,
     double? left,
     double? right,
+    bool isGreen = false,
   }) {
     return Positioned(
       top: top,
@@ -1153,7 +1063,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         width: 16,
         height: 16,
         decoration: BoxDecoration(
-          color: const Color(0xFFD4AF37),
+          color: isGreen ? const Color(0xFF00FF66) : const Color(0xFFD4AF37),
           borderRadius: BorderRadius.only(
             topLeft: top != null && left != null ? const Radius.circular(14) : Radius.zero,
             topRight: top != null && right != null ? const Radius.circular(14) : Radius.zero,
@@ -1265,12 +1175,12 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               onTap: _pickImageFromGallery,
             ),
 
-            // 2. Document Scanner Shutter Button
+            // 2. High-Res Document Capture Shutter Button
             GestureDetector(
-              onTap: _startDocumentScanner,
+              onTap: _captureAndScanPhoto,
               child: Container(
-                width: 68,
-                height: 68,
+                width: 72,
+                height: 72,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: const Color(0xFFD4AF37), width: 3.5),
@@ -1287,7 +1197,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     ),
                   ),
                   child: const Center(
-                    child: Icon(Icons.document_scanner, color: Color(0xFFFFF176), size: 30),
+                    child: Icon(Icons.camera_alt, color: Color(0xFFFFF176), size: 32),
                   ),
                 ),
               ),
